@@ -1,0 +1,60 @@
+# dawn-http-proxy
+
+`http-proxy` is a ratelimited HTTP proxy in front of the Discord API, making use
+of [dawn].
+
+### Using it
+
+HTTP clients often support proxies, such as Ruby's [`Net::HTTP`]. Read into your
+HTTP client to see how to use it.
+
+`dawn_http` natively supports using `dawn_http_proxy`, so you can use it like
+this:
+
+```rust
+use dawn_http::client::{
+    config::Proxy,
+    Client,
+};
+use std::error::Error;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let mut config = Client::builder();
+    config
+        .proxy(Proxy::all("http://localhost:3000")?)
+        .proxy_http(true)
+        .skip_ratelimiter(true);
+    let client = config.build()?;
+}
+```
+
+This will use the running proxy, skip the ratelimiter (since the proxy does
+ratelimiting itself), and will request over HTTP. If your proxy is configured
+to listen via HTTPS, then don't use HTTP.
+
+### Running via Docker
+
+Build the dockerfile and then run it:
+
+```sh
+$ docker build . -t http-proxy
+$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 http-proxy
+```
+
+This will set the discord token to `"my token"` and map the bound port to port
+3000 on the host machine.
+
+### Running via Cargo
+
+Build the binary:
+
+```sh
+$ cargo build --release
+$ DISCORD_TOKEN="my token" PORT=3000 ./target/release/dawn_http_proxy
+```
+
+This will set the discord token to `"my token"` and bind to port 3000.
+
+[dawn]: https://github.com/dawn-rs/dawn
+[`Net::HTTP`]: https://ruby-doc.org/stdlib-2.4.1/libdoc/net/http/rdoc/Net/HTTP.html#method-c-new
