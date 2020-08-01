@@ -26,7 +26,7 @@ RUN RUSTFLAGS=-Clinker=musl-gcc cargo build --release \
 # would have to be re-downloaded and re-compiled.
 #
 # Also, remove the artifacts of building the binaries.
-RUN rm -f target/x86_64-unknown-linux-musl/release/deps/dawn_http_proxy*
+RUN rm -f target/x86_64-unknown-linux-musl/release/deps/twilight_http_proxy*
 COPY ./src ./src
 
 RUN RUSTFLAGS=-Clinker=musl-gcc cargo build --release \
@@ -39,7 +39,7 @@ WORKDIR /app
 # And now copy the binary over from the build container. The build container is
 # based on a heavy image.
 COPY --from=build \
-    /app/target/x86_64-unknown-linux-musl/release/dawn-http-proxy \
-    ./dawn-http-proxy
+    /app/target/x86_64-unknown-linux-musl/release/twilight-http-proxy \
+    ./twilight-http-proxy
 
-ENTRYPOINT ./dawn-http-proxy
+ENTRYPOINT ./twilight-http-proxy

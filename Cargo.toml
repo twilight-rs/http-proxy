@@ -1,16 +1,16 @@
 [package]
-authors = ["Zeyla Hellyer <zeyla@hellyer.dev>"]
+authors = ["Twilight Contributors"]
 edition = "2018"
-name = "dawn-http-proxy"
+name = "twilight-http-proxy"
 version = "0.1.0"
 
 [dependencies]
-dawn-http = { git = "https://github.com/dawn-rs/dawn" }
-hyper = "0.13.0-alpha.1"
-futures-preview = "0.3.0-alpha.18"
-http = "0.1"
-log = "0.4"
-pretty_env_logger = "0.3"
-reqwest = { git = "https://github.com/seanmonstar/reqwest" }
+twilight-http = { branch = "trunk", git = "https://github.com/twilight-rs/twilight.git" }
+hyper = "0.13"
+http = "0.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
+tracing-log = "0.1"
+reqwest = "0.10"
 snafu = "0.5"
-tokio = "0.2.0-alpha.4"
+tokio = { version = "0.2", features = ["rt-core", "macros"] }
