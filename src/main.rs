@@ -24,7 +24,10 @@ use hyper::{
     Request,
     Response,
 };
-use log::{debug, error, info};
+use tracing::{debug, error, info};
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::prelude::*;
+use tracing_log::LogTracer;
 use snafu::ResultExt;
 use std::{
     convert::TryFrom,
@@ -36,7 +39,17 @@ use std::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    pretty_env_logger::try_init_timed()?;
+    LogTracer::init()?;
+
+    let log_filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))?;
+    let log_fmt_layer = fmt::layer();
+
+    let log_subscriber = tracing_subscriber::registry()
+        .with(log_filter_layer)
+        .with(log_fmt_layer);
+
+    tracing::subscriber::set_global_default(log_subscriber)?;
 
     let host_raw = env::var("HOST").unwrap_or("0.0.0.0".into());
     let host = IpAddr::from_str(&host_raw)?;

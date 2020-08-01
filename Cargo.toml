@@ -8,8 +8,9 @@ version = "0.1.0"
 twilight-http = { branch = "trunk", git = "https://github.com/twilight-rs/twilight.git" }
 hyper = "0.13"
 http = "0.2"
-log = "0.4"
-pretty_env_logger = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
+tracing-log = "0.1"
 reqwest = "0.10"
 snafu = "0.5"
 tokio = { version = "0.2", features = ["macros"] }
