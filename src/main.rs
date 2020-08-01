@@ -1,8 +1,8 @@
 mod error;
 
-use dawn_http::{
+use twilight_http::{
     client::Client,
-    request::Request as DawnRequest,
+    request::Request as TwilightRequest,
     routing::Path,
 };
 use error::{
@@ -13,7 +13,6 @@ use error::{
     RequestError,
     RequestIssue,
 };
-use futures::TryStreamExt;
 use http::request::Parts;
 use hyper::{
     body::Body,
@@ -88,7 +87,7 @@ async fn handle_request(client: Client, request: Request<Body>) -> Result<Respon
         trimmed_path.as_ref(),
     )).context(InvalidPath)?;
 
-    let bytes = (*body.try_concat().await.context(ChunkingRequest)?).to_owned();
+    let bytes = (hyper::body::to_bytes(body).await.context(ChunkingRequest)?).to_owned().to_vec();
 
     let path_and_query = match uri.path_and_query() {
         Some(v) => v.as_str().replace("/api/v6/", "").into(),
@@ -100,8 +99,9 @@ async fn handle_request(client: Client, request: Request<Body>) -> Result<Respon
             });
         },
     };
-    let raw_request = DawnRequest {
+    let raw_request = TwilightRequest {
         body: Some(bytes),
+        form: None,
         headers: Some(headers),
         method,
         path,
@@ -115,8 +115,8 @@ async fn handle_request(client: Client, request: Request<Body>) -> Result<Respon
 
     let bytes = resp.bytes().await.context(ChunkingResponse)?;
 
-    let mut builder = Response::builder();
-    builder.status(status);
+    let mut builder = Response::builder()
+        .status(status);
 
     if let Some(headers) = builder.headers_mut() {
         headers.extend(resp_headers);

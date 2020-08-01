@@ -1,5 +1,5 @@
-use dawn_http::{
-    error::Error as DawnError,
+use twilight_http::{
+    error::Error as TwilightError,
     routing::PathParseError,
 };
 use http::{Error as HttpError, Uri};
@@ -26,6 +26,6 @@ pub enum RequestError {
         uri: Uri,
     },
     RequestIssue {
-        source: DawnError,
+        source: TwilightError,
     },
 }
