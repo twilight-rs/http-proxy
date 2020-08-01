@@ -1,5 +1,5 @@
 [package]
-authors = ["Zeyla Hellyer <zeyla@hellyer.dev>"]
+authors = ["Twilight Contributors"]
 edition = "2018"
 name = "twilight-http-proxy"
 version = "0.1.0"
