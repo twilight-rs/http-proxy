@@ -1,19 +1,19 @@
-# dawn-http-proxy
+# twilight-http-proxy
 
 `http-proxy` is a ratelimited HTTP proxy in front of the Discord API, making use
-of [dawn].
+of [twilight].
 
 ### Using it
 
 HTTP clients often support proxies, such as Ruby's [`Net::HTTP`]. Read into your
 HTTP client to see how to use it.
 
-`dawn_http` natively supports using `dawn_http_proxy`, so you can use it like
+`twilight_http` natively supports using `twilight_http_proxy`, so you can use it like
 this:
 
 ```rust
-use dawn_http::client::{
-    config::Proxy,
+use twilight_http::client::{
+    Proxy,
     Client,
 };
 use std::error::Error;
@@ -51,10 +51,10 @@ Build the binary:
 
 ```sh
 $ cargo build --release
-$ DISCORD_TOKEN="my token" PORT=3000 ./target/release/dawn_http_proxy
+$ DISCORD_TOKEN="my token" PORT=3000 ./target/release/twilight_http_proxy
 ```
 
 This will set the discord token to `"my token"` and bind to port 3000.
 
-[dawn]: https://github.com/dawn-rs/dawn
+[twilight]: https://github.com/twilight-rs/twilight
 [`Net::HTTP`]: https://ruby-doc.org/stdlib-2.4.1/libdoc/net/http/rdoc/Net/HTTP.html#method-c-new
