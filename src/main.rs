@@ -37,9 +37,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::subscriber::set_global_default(log_subscriber)?;
 
-    let host_raw = env::var("HOST").unwrap_or("0.0.0.0".into());
+    let host_raw = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let host = IpAddr::from_str(&host_raw)?;
-    let port = env::var("PORT").unwrap_or("80".into()).parse()?;
+    let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
     let client = Client::new(env::var("DISCORD_TOKEN")?);
 
@@ -90,9 +90,7 @@ async fn handle_request(
     };
     let path = Path::try_from((method.clone(), trimmed_path.as_ref())).context(InvalidPath)?;
 
-    let bytes = (hyper::body::to_bytes(body).await.context(ChunkingRequest)?)
-        .to_owned()
-        .to_vec();
+    let bytes = (hyper::body::to_bytes(body).await.context(ChunkingRequest)?).to_vec();
 
     let path_and_query = match uri.path_and_query() {
         Some(v) => v.as_str().replace("/api/v6/", "").into(),

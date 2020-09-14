@@ -1,0 +1,31 @@
+name: Publish update
+on: [push]
+
+jobs:
+  build:
+    name: Build & publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v1
+      - name: Enable experimental Docker features
+        run: |
+            mkdir -p ~/.docker
+            echo "{\"experimental\": \"enabled\"}" > ~/.docker/config.json
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: gelbpunkt
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build for x86_64
+        run: |
+            docker build -t gelbpunkt/twilight-http-proxy:amd64 .
+      - name: Build for aarch64
+        run: |
+            docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t gelbpunkt/twilight-http-proxy:armv8 .
+      - name: Create manifest and push it
+        run: |
+            docker push gelbpunkt/twilight-http-proxy:amd64
+            docker push gelbpunkt/twilight-http-proxy:armv8
+            docker manifest create gelbpunkt/twilight-http-proxy:latest gelbpunkt/twilight-http-proxy:amd64 gelbpunkt/twilight-http-proxy:armv8
+            docker manifest push gelbpunkt/twilight-http-proxy:latest
