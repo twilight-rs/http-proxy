@@ -14,18 +14,22 @@ jobs:
             echo "{\"experimental\": \"enabled\"}" > ~/.docker/config.json
       - name: Login to DockerHub
         uses: docker/login-action@v1
+        if: ${{ secrets.DOCKERHUB_USERNAME }}
         with:
-          username: gelbpunkt
+          username: if: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build for x86_64
         run: |
-            docker build -t gelbpunkt/twilight-http-proxy:amd64 .
+            docker build -t twilight-http-proxy:amd64 .
       - name: Build for aarch64
         run: |
-            docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t gelbpunkt/twilight-http-proxy:armv8 .
+            docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t twilight-http-proxy:armv8 .
       - name: Create manifest and push it
+        if: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
-            docker push gelbpunkt/twilight-http-proxy:amd64
-            docker push gelbpunkt/twilight-http-proxy:armv8
-            docker manifest create gelbpunkt/twilight-http-proxy:latest gelbpunkt/twilight-http-proxy:amd64 gelbpunkt/twilight-http-proxy:armv8
-            docker manifest push gelbpunkt/twilight-http-proxy:latest
+            docker tag twilight-http-proxy:amd64 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64
+            docker tag twilight-http-proxy:armv8 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
+            docker push ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64
+            docker push ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
+            docker manifest create ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:latest ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
+            docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:latest
