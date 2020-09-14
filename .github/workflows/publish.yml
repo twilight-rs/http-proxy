@@ -4,6 +4,9 @@ on: [push]
 jobs:
   build:
     name: Build & publish
+    env:
+      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -14,7 +17,7 @@ jobs:
             echo "{\"experimental\": \"enabled\"}" > ~/.docker/config.json
       - name: Login to DockerHub
         uses: docker/login-action@v1
-        if: secrets.DOCKERHUB_USERNAME
+        if: env.DOCKER_USERNAME
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -25,7 +28,7 @@ jobs:
         run: |
             docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t twilight-http-proxy:armv8 .
       - name: Create manifest and push it
-        if: secrets.DOCKERHUB_USERNAME
+        if: env.DOCKER_USERNAME
         run: |
             docker tag twilight-http-proxy:amd64 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64
             docker tag twilight-http-proxy:armv8 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
