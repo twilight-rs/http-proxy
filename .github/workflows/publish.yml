@@ -25,7 +25,7 @@ jobs:
         run: |
             docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t twilight-http-proxy:armv8 .
       - name: Create manifest and push it
-        if: ${{ secrets.DOCKERHUB_USERNAME }}
+        if: secrets.DOCKERHUB_USERNAME
         run: |
             docker tag twilight-http-proxy:amd64 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64
             docker tag twilight-http-proxy:armv8 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
