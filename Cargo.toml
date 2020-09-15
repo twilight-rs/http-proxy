@@ -5,12 +5,12 @@ name = "twilight-http-proxy"
 version = "0.1.0"
 
 [dependencies]
-twilight-http = { branch = "trunk", git = "https://github.com/twilight-rs/twilight.git" }
+twilight-http = "0.1"
 hyper = "0.13"
 http = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
 tracing-log = "0.1"
-reqwest = "0.10"
-snafu = "0.5"
+reqwest = { version = "0.10", default-features = false, features = ["rustls-tls"] }
+snafu = "0.6"
 tokio = { version = "0.2", features = ["rt-core", "macros"] }
