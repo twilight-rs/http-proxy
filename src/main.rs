@@ -100,8 +100,13 @@ async fn handle_request(
             return Err(RequestError::NoPath { uri });
         }
     };
+    let body = if bytes.is_empty() {
+        None
+    } else {
+        Some(bytes)
+    };
     let raw_request = TwilightRequest {
-        body: Some(bytes),
+        body,
         form: None,
         headers: Some(headers),
         method,
