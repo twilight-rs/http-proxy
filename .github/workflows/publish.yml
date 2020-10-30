@@ -5,8 +5,9 @@ jobs:
   build:
     name: Build & publish
     env:
-      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
       DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_TARGET_ACCOUNT: ${{ secrets.DOCKERHUB_TARGET }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -20,19 +21,21 @@ jobs:
         if: env.DOCKER_USERNAME
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - name: Build for x86_64
         run: |
-            docker build -t twilight-http-proxy:amd64 .
+            docker build -t http-proxy:amd64 .
       - name: Build for aarch64
         run: |
-            docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t twilight-http-proxy:armv8 .
+            docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t http-proxy:armv8 .
       - name: Create manifest and push it
         if: env.DOCKER_USERNAME
         run: |
-            docker tag twilight-http-proxy:amd64 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64
-            docker tag twilight-http-proxy:armv8 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
-            docker push ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64
-            docker push ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
-            docker manifest create ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:latest ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:amd64 ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:armv8
-            docker manifest push ${{ secrets.DOCKERHUB_USERNAME }}/twilight-http-proxy:latest
+            docker tag http-proxy:amd64 ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:amd64
+            docker tag http-proxy:armv8 ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:armv8
+            docker push ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:amd64
+            docker push ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:armv8
+            docker manifest create ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:latest ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:amd64 ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:armv8
+            docker manifest push ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:latest
+            docker manifest create ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:v8 ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:amd64 ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:armv8
+            docker manifest push ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:v8
