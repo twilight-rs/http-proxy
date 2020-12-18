@@ -21,7 +21,9 @@ use tracing::{debug, error, info};
 use tracing_log::LogTracer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
-use twilight_http::{client::Client, request::Request as TwilightRequest, routing::Path};
+use twilight_http::{
+    client::Client, request::Request as TwilightRequest, routing::Path, API_VERSION,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -73,6 +75,7 @@ async fn handle_request(
     client: Client,
     request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
+    let api_url: String = format!("/api/v{}/", API_VERSION);
     debug!("Incoming request: {:?}", request);
 
     let (parts, body) = request.into_parts();
@@ -83,8 +86,8 @@ async fn handle_request(
         ..
     } = parts;
 
-    let trimmed_path = if uri.path().starts_with("/api/v6") {
-        uri.path().replace("/api/v6", "")
+    let trimmed_path = if uri.path().starts_with(&api_url) {
+        uri.path().replace(&api_url, "")
     } else {
         uri.path().to_owned()
     };
@@ -93,18 +96,14 @@ async fn handle_request(
     let bytes = (hyper::body::to_bytes(body).await.context(ChunkingRequest)?).to_vec();
 
     let path_and_query = match uri.path_and_query() {
-        Some(v) => v.as_str().replace("/api/v6/", "").into(),
+        Some(v) => v.as_str().replace(&api_url, "").into(),
         None => {
             debug!("No path in URI: {:?}", uri);
 
             return Err(RequestError::NoPath { uri });
         }
     };
-    let body = if bytes.is_empty() {
-        None
-    } else {
-        Some(bytes)
-    };
+    let body = if bytes.is_empty() { None } else { Some(bytes) };
     let raw_request = TwilightRequest {
         body,
         form: None,
