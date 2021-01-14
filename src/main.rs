@@ -1,8 +1,6 @@
 mod error;
 
-use error::{
-    ChunkingRequest, ChunkingResponse, InvalidPath, MakingResponseBody, RequestError, RequestIssue,
-};
+use error::{ChunkingRequest, InvalidPath, RequestError, RequestIssue};
 use http::request::Parts;
 use hyper::{
     body::Body,
@@ -114,21 +112,6 @@ async fn handle_request(
     };
 
     let resp = client.raw(raw_request).await.context(RequestIssue)?;
-
-    let status = resp.status();
-    let resp_headers = resp.headers().clone();
-
-    let bytes = resp.bytes().await.context(ChunkingResponse)?;
-
-    let mut builder = Response::builder().status(status);
-
-    if let Some(headers) = builder.headers_mut() {
-        headers.extend(resp_headers);
-    }
-
-    let resp = builder
-        .body(Body::from(bytes))
-        .context(MakingResponseBody)?;
 
     debug!("Response: {:?}", resp);
 

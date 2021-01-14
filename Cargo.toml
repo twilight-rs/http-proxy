@@ -5,12 +5,11 @@ name = "twilight-http-proxy"
 version = "0.1.0"
 
 [dependencies]
-twilight-http = "0.2"
-hyper = "0.13"
+twilight-http = { version = "0.3", default-features = false, features = ["rustls"] }
+hyper = { version = "0.14", features = ["tcp", "server", "http1", "http2"] }
 http = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
 tracing-log = "0.1"
-reqwest = { version = "0.10", default-features = false, features = ["rustls-tls"] }
 snafu = "0.6"
-tokio = { version = "0.2", features = ["rt-core", "macros"] }
+tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
