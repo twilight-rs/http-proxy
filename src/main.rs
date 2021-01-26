@@ -27,19 +27,19 @@ use twilight_http::{
 use std::{future::Future, pin::Pin, sync::Arc, time::Instant};
 
 #[cfg(feature = "expose-metrics")]
+use lazy_static::lazy_static;
+#[cfg(feature = "expose-metrics")]
 use metrics::timing;
 #[cfg(feature = "expose-metrics")]
 use metrics_core::{Builder, Drain};
 #[cfg(feature = "expose-metrics")]
 use metrics_runtime::{observers::PrometheusBuilder, Receiver};
-#[cfg(feature = "expose-metrics")]
-use lazy_static::lazy_static;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
-    static ref METRIC_KEY: String = env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into());
+    static ref METRIC_KEY: String =
+        env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into());
 }
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -64,16 +64,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address = SocketAddr::from((host, port));
 
     #[cfg(feature = "expose-metrics")]
-        {
-            let receiver = Receiver::builder()
-                .build()
-                .expect("Failed to create metrics receiver!");
+    {
+        let receiver = Receiver::builder()
+            .build()
+            .expect("Failed to create metrics receiver!");
 
-            receiver.install();
-        }
+        receiver.install();
+    }
 
     #[cfg(feature = "expose-metrics")]
-        let metrics_state = Arc::new(PrometheusBuilder::new());
+    let metrics_state = Arc::new(PrometheusBuilder::new());
 
     // The closure inside `make_service_fn` is run for each connection,
     // creating a 'service' to handle requests for that specific connection.
@@ -82,25 +82,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let client = client.clone();
 
         #[cfg(feature = "expose-metrics")]
-            let metrics_state = metrics_state.clone();
+        let metrics_state = metrics_state.clone();
 
         async move {
             Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
                 #[cfg(feature = "expose-metrics")]
-                    {
-                        let uri = incoming.uri();
+                {
+                    let uri = incoming.uri();
 
-                        if uri.path() == "/metrics" {
-                            handle_metrics(metrics_state.clone())
-                        } else {
-                            Box::pin(handle_request(client.clone(), incoming))
-                        }
+                    if uri.path() == "/metrics" {
+                        handle_metrics(metrics_state.clone())
+                    } else {
+                        Box::pin(handle_request(client.clone(), incoming))
                     }
+                }
 
                 #[cfg(not(feature = "expose-metrics"))]
-                    {
-                        handle_request(client.clone(), incoming)
-                    }
+                {
+                    handle_request(client.clone(), incoming)
+                }
             }))
         }
     });
@@ -214,12 +214,12 @@ async fn handle_request(
     };
 
     #[cfg(feature = "expose-metrics")]
-        let start = Instant::now();
+    let start = Instant::now();
 
     let resp = client.raw(raw_request).await.context(RequestIssue)?;
 
     #[cfg(feature = "expose-metrics")]
-        let end = Instant::now();
+    let end = Instant::now();
 
     debug!("Response: {:?}", resp);
 
@@ -227,8 +227,6 @@ async fn handle_request(
     timing!(METRIC_KEY, start, end, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
 
     info!("{} {}: {}", m, p, resp.status());
-
-
 
     Ok(resp)
 }
