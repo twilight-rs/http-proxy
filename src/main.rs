@@ -224,7 +224,7 @@ async fn handle_request(
     debug!("Response: {:?}", resp);
 
     #[cfg(feature = "expose-metrics")]
-    timing!("gearbot_proxy_requests", start, end, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
+    timing!(METRIC_KEY, start, end, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
 
     info!("{} {}: {}", m, p, resp.status());
 
