@@ -56,5 +56,11 @@ $ DISCORD_TOKEN="my token" PORT=3000 ./target/release/twilight_http_proxy
 
 This will set the discord token to `"my token"` and bind to port 3000.
 
+## Grafana metrics
+The http proxy can expose grafana metrics when compiled with the ``export-metrics`` feature. These metrics are then available on the ``/metrics`` endpoint.
+You can set the metrics key used for the histogram data by setting the ``METRIC_KEY`` environment variable.
+
+The exported histogram includes timing percentiles, response status codes, request path and request method. Calls to the metrics endpoint itself are not included in the metrics.
+
 [twilight]: https://github.com/twilight-rs/twilight
 [`Net::HTTP`]: https://ruby-doc.org/stdlib-2.4.1/libdoc/net/http/rdoc/Net/HTTP.html#method-c-new
