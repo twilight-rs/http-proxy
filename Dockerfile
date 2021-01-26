@@ -7,6 +7,8 @@ ARG MUSL_TARGET="x86_64-linux-musl"
 # Uses docker's own naming for architectures
 # e.g. x86_64 -> amd64, aarch64 -> arm64v8, arm -> arm32v7
 ARG FINAL_TARGET="amd64"
+# The crate features to build this with
+ARG FEATURES=""
 
 FROM alpine:latest as build
 ARG RUST_TARGET

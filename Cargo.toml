@@ -13,3 +13,14 @@ tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
 tracing-log = "0.1"
 snafu = "0.6"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
+
+# these are only needed for the metrics
+metrics = { version = "0.12", optional = true }
+metrics-observer-prometheus = { version = "0.1", optional = true }
+metrics-core = { version = "0.5", optional = true }
+metrics-runtime = { version = "0.13", optional = true }
+lazy_static = {version = "1.4", optional = true }
+
+[features]
+default = []
+expose-metrics = ["metrics", "metrics-observer-prometheus", "metrics-core", "metrics-runtime", "lazy_static"]
