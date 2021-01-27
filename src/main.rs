@@ -221,12 +221,12 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     let end = Instant::now();
 
-    debug!("Response: {:?}", resp);
+    trace!("Response: {:?}", resp);
 
     #[cfg(feature = "expose-metrics")]
     timing!(METRIC_KEY, start, end, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
 
-    info!("{} {}: {}", m, p, resp.status());
+    debug!("{} {}: {}", m, p, resp.status());
 
     Ok(resp)
 }
