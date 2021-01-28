@@ -15,7 +15,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     str::FromStr,
 };
-use tracing::{debug, error, info};
+use tracing::{debug, error, trace};
 use tracing_log::LogTracer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
