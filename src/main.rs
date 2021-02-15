@@ -224,7 +224,7 @@ async fn handle_request(
     trace!("Response: {:?}", resp);
 
     #[cfg(feature = "expose-metrics")]
-    timing!(METRIC_KEY, start, end, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
+    timing!(&METRIC_KEY[..], start, end, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
 
     debug!("{} {}: {}", m, p, resp.status());
 
