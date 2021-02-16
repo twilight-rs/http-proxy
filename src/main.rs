@@ -221,7 +221,7 @@ async fn handle_request(
     trace!("Response: {:?}", resp);
 
     #[cfg(feature = "expose-metrics")]
-    histogram!(&METRIC_KEY[..], end - start, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
+    histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
 
     debug!("{} {}: {}", m, p, resp.status());
 
