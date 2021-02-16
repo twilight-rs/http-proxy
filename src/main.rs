@@ -24,14 +24,15 @@ use twilight_http::{
 };
 
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, sync::Arc, time::Instant};
+use std::{future::Future, pin::Pin, time::Instant};
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
-use metrics::{timing, Recorder, Key};
+use metrics::histogram;
 #[cfg(feature = "expose-metrics")]
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusRecorder};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use std::sync::Arc;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
@@ -62,15 +63,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address = SocketAddr::from((host, port));
 
     #[cfg(feature = "expose-metrics")]
+    let handle: Arc<PrometheusHandle>;
+
+    #[cfg(feature = "expose-metrics")]
     {
         let recorder = PrometheusBuilder::new().build();
-
+        handle = Arc::new(recorder.handle());
         metrics::set_boxed_recorder(Box::new(recorder))
             .expect("Failed to create metrics receiver!");
     }
-
-    #[cfg(feature = "expose-metrics")]
-    let metrics_state = Arc::new(PrometheusBuilder::new());
 
     // The closure inside `make_service_fn` is run for each connection,
     // creating a 'service' to handle requests for that specific connection.
@@ -79,7 +80,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let client = client.clone();
 
         #[cfg(feature = "expose-metrics")]
-        let metrics_state = metrics_state.clone();
+        let handle = handle.clone();
 
         async move {
             Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
@@ -88,7 +89,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let uri = incoming.uri();
 
                     if uri.path() == "/metrics" {
-                        handle_metrics(metrics_state.clone())
+                        handle_metrics(handle.clone())
                     } else {
                         Box::pin(handle_request(client.clone(), incoming))
                     }
@@ -221,7 +222,7 @@ async fn handle_request(
     trace!("Response: {:?}", resp);
 
     #[cfg(feature = "expose-metrics")]
-    timing!(&METRIC_KEY[..], start, end, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
+    histogram!(&METRIC_KEY[..], end - start, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
 
     debug!("{} {}: {}", m, p, resp.status());
 
@@ -230,11 +231,11 @@ async fn handle_request(
 
 #[cfg(feature = "expose-metrics")]
 fn handle_metrics(
-    metrics_state: Arc<PrometheusBuilder>,
+    handle: Arc<PrometheusHandle>
 ) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
     Box::pin(async move {
         Ok(Response::builder()
-            .body(Body::from(metrics_state.build().handle().render()))
+            .body(Body::from(handle.render()))
             .unwrap())
     })
 }

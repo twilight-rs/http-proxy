@@ -1782,7 +1782,7 @@ dependencies = [
  "http",
  "hyper 0.14.2",
  "lazy_static",
- "metrics 0.12.1",
+ "metrics 0.14.2",
  "metrics-core",
  "metrics-exporter-prometheus",
  "metrics-runtime",
