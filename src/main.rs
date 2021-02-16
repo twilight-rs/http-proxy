@@ -24,7 +24,7 @@ use twilight_http::{
 };
 
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, time::Instant};
+use std::{future::Future, pin::Pin, time::Instant, sync::Arc};
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
@@ -32,7 +32,6 @@ use lazy_static::lazy_static;
 use metrics::histogram;
 #[cfg(feature = "expose-metrics")]
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-use std::sync::Arc;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
