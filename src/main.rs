@@ -29,11 +29,9 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Instant};
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
-use metrics::timing;
+use metrics::{timing, Recorder, Key};
 #[cfg(feature = "expose-metrics")]
-use metrics_core::{Builder, Drain};
-#[cfg(feature = "expose-metrics")]
-use metrics_runtime::{observers::PrometheusBuilder, Receiver};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusRecorder};
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
@@ -65,11 +63,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "expose-metrics")]
     {
-        let receiver = Receiver::builder()
-            .build()
-            .expect("Failed to create metrics receiver!");
+        let recorder = PrometheusBuilder::new().build();
 
-        receiver.install();
+        metrics::set_boxed_recorder(Box::new(recorder))
+            .expect("Failed to create metrics receiver!");
     }
 
     #[cfg(feature = "expose-metrics")]
@@ -237,7 +234,7 @@ fn handle_metrics(
 ) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
     Box::pin(async move {
         Ok(Response::builder()
-            .body(Body::from(metrics_state.build().drain()))
+            .body(Body::from(metrics_state.build().handle().render()))
             .unwrap())
     })
 }
