@@ -555,12 +555,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metrics-core"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c064b3a1ff41f4bf6c91185c8a0caeccf8a8a27e9d0f92cc54cf3dbec812f48"
-
-[[package]]
 name = "metrics-exporter-prometheus"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1362,7 +1356,6 @@ dependencies = [
  "hyper",
  "lazy_static",
  "metrics",
- "metrics-core",
  "metrics-exporter-prometheus",
  "snafu",
  "tokio",
