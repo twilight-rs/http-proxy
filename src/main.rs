@@ -216,7 +216,7 @@ async fn handle_request(
 
     #[cfg(feature = "expose-metrics")]
     HISTOGRAM
-        .with_label_values(&[m.as_str(), p, resp.status().as_str()])
+        .with_label_values(&[m.as_str(), p, resp.status().to_string().as_str()])
         .observe((end - start).as_secs_f64());
 
     debug!("{} {}: {}", m, p, resp.status());
