@@ -24,19 +24,24 @@ use twilight_http::{
 };
 
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, time::Instant, sync::Arc};
+use std::{future::Future, pin::Pin, time::Instant};
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
-use metrics::histogram;
-#[cfg(feature = "expose-metrics")]
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use prometheus::{HistogramOpts, HistogramVec, Registry, TextEncoder, Encoder};
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
     static ref METRIC_KEY: String =
         env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into());
+
+    static ref REGISTRY: Registry = Registry::new();
+
+    static ref HISTOGRAM: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(METRIC_KEY.as_str(), "Response Times"),
+        &["method", "route", "status"]
+    ).unwrap();
 }
 
 #[tokio::main]
@@ -62,24 +67,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address = SocketAddr::from((host, port));
 
     #[cfg(feature = "expose-metrics")]
-    let handle: Arc<PrometheusHandle>;
-
-    #[cfg(feature = "expose-metrics")]
-    {
-        let recorder = PrometheusBuilder::new().build();
-        handle = Arc::new(recorder.handle());
-        metrics::set_boxed_recorder(Box::new(recorder))
-            .expect("Failed to create metrics receiver!");
-    }
+    REGISTRY.register(Box::new(HISTOGRAM.clone()))?;
 
     // The closure inside `make_service_fn` is run for each connection,
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
         debug!("Connection from: {:?}", addr);
         let client = client.clone();
-
-        #[cfg(feature = "expose-metrics")]
-        let handle = handle.clone();
 
         async move {
             Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
@@ -88,7 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let uri = incoming.uri();
 
                     if uri.path() == "/metrics" {
-                        handle_metrics(handle.clone())
+                        handle_metrics()
                     } else {
                         Box::pin(handle_request(client.clone(), incoming))
                     }
@@ -221,7 +215,9 @@ async fn handle_request(
     trace!("Response: {:?}", resp);
 
     #[cfg(feature = "expose-metrics")]
-    histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
+    HISTOGRAM
+        .with_label_values(&[m.as_str(), p, resp.status().as_str()])
+        .observe((end - start).as_secs_f64());
 
     debug!("{} {}: {}", m, p, resp.status());
 
@@ -229,12 +225,32 @@ async fn handle_request(
 }
 
 #[cfg(feature = "expose-metrics")]
-fn handle_metrics(
-    handle: Arc<PrometheusHandle>
-) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
+fn handle_metrics() -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
     Box::pin(async move {
-        Ok(Response::builder()
-            .body(Body::from(handle.render()))
-            .unwrap())
+        let mut buffer = Vec::new();
+
+        if let Err(e) = TextEncoder::new().encode(&REGISTRY.gather(), &mut buffer) {
+            error!("error while encoding metrics: {:?}", e);
+
+            return Ok(Response::builder()
+                .status(500)
+                .body(Body::from(format!("{:?}", e)))
+                .unwrap())
+        }
+
+        match String::from_utf8(buffer) {
+            Ok(s) => {
+                Ok(Response::builder()
+                    .body(Body::from(s))
+                    .unwrap())
+            }
+
+            Err(e) => {
+                Ok(Response::builder()
+                    .status(500)
+                    .body(Body::from(format!("{:?}", e)))
+                    .unwrap())
+            }
+        }
     })
 }
