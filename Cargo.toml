@@ -17,10 +17,8 @@ tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
 # Only used by the `expose-metrics` feature.
 metrics = { version = "0.14", optional = true }
 metrics-exporter-prometheus = { version = "0.3", optional = true }
-metrics-core = { version = "0.5", optional = true }
-metrics-runtime = { version = "0.13", optional = true }
 lazy_static = {version = "1.4", optional = true }
 
 [features]
 default = []
-expose-metrics = ["metrics", "metrics-exporter-prometheus", "metrics-core", "metrics-runtime", "lazy_static"]
+expose-metrics = ["metrics", "metrics-exporter-prometheus", "lazy_static"]
