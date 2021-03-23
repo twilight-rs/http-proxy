@@ -32,18 +32,20 @@ to listen via HTTPS, then don't use HTTP.
 
 ### Running via Docker
 
-Build the dockerfile and then run it:
+Prebuilt Docker images are published on [Docker Hub].
 
 ```sh
-$ docker build . -t http-proxy
-# Or build with the metrics feature enabled
-$ docker build . --build-arg FEATURES="expose-metrics" -t http-proxy
-
-$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 http-proxy
+$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy
+# Or with metrics enabled
+$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy:metrics
 ```
 
 This will set the discord token to `"my token"` and map the bound port to port
 3000 on the host machine.
+
+Images come in multiple different variants for metrics, ARM, Discord API v8 and
+v6. You can use these with their corresponding image tags found on
+[Docker Hub][docker-hub-tags].
 
 ### Running via Cargo
 
@@ -64,3 +66,5 @@ The exported histogram includes timing percentiles, response status codes, reque
 
 [twilight]: https://github.com/twilight-rs/twilight
 [`Net::HTTP`]: https://ruby-doc.org/stdlib-2.4.1/libdoc/net/http/rdoc/Net/HTTP.html#method-c-new
+[Docker Hub]: https://hub.docker.com/r/twilightrs/http-proxy
+[docker-hub-tags]: https://hub.docker.com/r/twilightrs/http-proxy/tags
