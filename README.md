@@ -35,11 +35,11 @@ to listen via HTTPS, then don't use HTTP.
 Build the dockerfile and then run it:
 
 ```sh
-docker build . -t http-proxy
+$ docker build . -t http-proxy
 # Or build with the metrics feature enabled
-docker build . --build-arg FEATURES="expose-metrics" -t http-proxy
+$ docker build . --build-arg FEATURES="expose-metrics" -t http-proxy
 
-docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 http-proxy
+$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 http-proxy
 ```
 
 This will set the discord token to `"my token"` and map the bound port to port
