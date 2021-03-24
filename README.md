@@ -44,8 +44,8 @@ This will set the discord token to `"my token"` and map the bound port to port
 3000 on the host machine.
 
 Images come in multiple different variants for metrics, ARM, Discord API v8 and
-v6. You can use these with their corresponding image tags found on
-[Docker Hub][docker-hub-tags].
+v6. You can use these with their corresponding image tags found on the
+[Docker Hub tags page][docker-hub-tags].
 
 ### Running via Cargo
 
