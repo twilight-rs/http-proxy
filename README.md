@@ -18,6 +18,7 @@ use std::error::Error;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let client = Client::builder()
+        .token("MY TOKEN")
         .proxy("localhost:3000", true)
         .ratelimiter(None)
         .build();
@@ -30,18 +31,21 @@ This will use the running proxy, skip the ratelimiter (since the proxy does
 ratelimiting itself), and will request over HTTP. If your proxy is configured
 to listen via HTTPS, then don't use HTTP.
 
+**NOTE:** The proxy will mirror the authorization state of incoming requests.
+Any requests that require authorization will fail if an authorization header is
+not included.
+
 ### Running via Docker
 
 Prebuilt Docker images are published on [Docker Hub].
 
 ```sh
-$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy
+$ docker run -itd -p 3000:80 twilightrs/http-proxy
 # Or with metrics enabled
-$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy:metrics
+$ docker run -itd -p 3000:80 twilightrs/http-proxy:metrics
 ```
 
-This will set the discord token to `"my token"` and map the bound port to port
-3000 on the host machine.
+This will map the bound port to port 3000 on the host machine.
 
 Images come in multiple different variants for metrics, ARM, Discord API v8 and
 v6. You can use these with their corresponding image tags found on the
@@ -53,10 +57,10 @@ Build the binary:
 
 ```sh
 $ cargo build --release
-$ DISCORD_TOKEN="my token" PORT=3000 ./target/release/twilight_http_proxy
+$ PORT=3000 ./target/release/twilight_http_proxy
 ```
 
-This will set the discord token to `"my token"` and bind to port 3000.
+This will bind to port 3000.
 
 ## Grafana metrics
 The http proxy can expose grafana metrics when compiled with the ``expose-metrics`` feature. These metrics are then available on the ``/metrics`` endpoint.

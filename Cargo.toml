@@ -8,6 +8,7 @@ version = "0.1.0"
 twilight-http = { version = "0.3.6", default-features = false, features = ["rustls"] }
 hyper = { version = "0.14", features = ["tcp", "server", "http1", "http2"] }
 http = "0.2"
+dashmap = "4.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
 tracing-log = "0.1"
