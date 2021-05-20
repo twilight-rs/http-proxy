@@ -1,4 +1,4 @@
-use http::{Error as HttpError, Uri};
+use http::{Method, Uri};
 use hyper::Error as HyperError;
 use snafu::Snafu;
 use twilight_http::{error::Error as TwilightError, routing::PathParseError};
@@ -8,7 +8,7 @@ use twilight_http::{error::Error as TwilightError, routing::PathParseError};
 pub enum RequestError {
     ChunkingRequest { source: HyperError },
     InvalidPath { source: PathParseError },
-    MakingResponseBody { source: HttpError },
+    InvalidMethod { method: Method },
     NoPath { uri: Uri },
     RequestIssue { source: TwilightError },
 }
