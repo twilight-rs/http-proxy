@@ -164,6 +164,16 @@ fn path_name(path: &Path) -> &'static str {
         Path::VoiceRegions => "Voice region list",
         Path::WebhooksId(..) => "Webhook",
         Path::OauthApplicationsMe => "Current application info",
+        Path::ChannelsIdMessagesIdCrosspost(..) => "Crosspost message",
+        Path::ChannelsIdRecipients(..) => "Channel recipients",
+        Path::ChannelsIdFollowers(..) => "Channel followers",
+        Path::GuildsIdBansId(..) => "Specific guild ban",
+        Path::GuildsIdMembersSearch(..) => "Search guild members",
+        Path::GuildsIdTemplates(..) => "Guild templates",
+        Path::GuildsIdTemplatesCode(..) => "Specific guild template",
+        Path::GuildsIdVoiceStates(..) => "Guild voice states",
+        Path::GuildsIdWelcomeScreen(..) => "Guild welcome screen",
+        Path::WebhooksIdTokenMessagesId(..) => "Specific webhook message",
         _ => "Unknown path!",
     }
 }
