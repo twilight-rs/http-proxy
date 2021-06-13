@@ -31,10 +31,10 @@ jobs:
             docker build --no-cache --build-arg FEATURES=expose-metrics -t http-proxy:metricsamd64 .
       - name: Build for aarch64
         run: |
-            docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 -t http-proxy:armv8 .
+            docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=aarch64 -t http-proxy:armv8 .
       - name: Build for aarch64 with metrics
         run: |
-          docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=arm64v8 --build-arg FEATURES=expose-metrics -t http-proxy:metricsarmv8 .
+          docker build --no-cache --build-arg RUST_TARGET=aarch64-unknown-linux-musl --build-arg MUSL_TARGET=aarch64-linux-musl --build-arg FINAL_TARGET=aarch64 --build-arg FEATURES=expose-metrics -t http-proxy:metricsarmv8 .
       - name: Create manifest and push it
         if: env.DOCKER_USERNAME
         run: |

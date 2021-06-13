@@ -2,7 +2,7 @@ mod error;
 
 use dashmap::DashMap;
 use error::{ChunkingRequest, InvalidPath, RequestError, RequestIssue};
-use http::request::Parts;
+use http::{request::Parts, Method as HttpMethod};
 use hyper::{
     body::Body,
     server::{conn::AddrStream, Server},
@@ -19,14 +19,16 @@ use std::{
 };
 use tracing::{debug, error, info, trace};
 use tracing_log::LogTracer;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twilight_http::{
-    client::Client, request::Request as TwilightRequest, routing::Path, API_VERSION,
+    client::Client,
+    request::{Method, Request as TwilightRequest},
+    routing::Path,
+    API_VERSION,
 };
 
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, time::Instant};
+use std::{future::Future, pin::Pin, sync::Arc, time::Instant};
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
@@ -166,6 +168,16 @@ fn path_name(path: &Path) -> &'static str {
         Path::VoiceRegions => "Voice region list",
         Path::WebhooksId(..) => "Webhook",
         Path::OauthApplicationsMe => "Current application info",
+        Path::ChannelsIdMessagesIdCrosspost(..) => "Crosspost message",
+        Path::ChannelsIdRecipients(..) => "Channel recipients",
+        Path::ChannelsIdFollowers(..) => "Channel followers",
+        Path::GuildsIdBansId(..) => "Specific guild ban",
+        Path::GuildsIdMembersSearch(..) => "Search guild members",
+        Path::GuildsIdTemplates(..) => "Guild templates",
+        Path::GuildsIdTemplatesCode(..) => "Specific guild template",
+        Path::GuildsIdVoiceStates(..) => "Guild voice states",
+        Path::GuildsIdWelcomeScreen(..) => "Guild welcome screen",
+        Path::WebhooksIdTokenMessagesId(..) => "Specific webhook message",
         _ => "Unknown path!",
     }
 }
@@ -185,6 +197,7 @@ async fn handle_request(
         ..
     } = parts;
 
+<<<<<<< HEAD
     let auth_token = headers
         .get(http::header::AUTHORIZATION)
         .and_then(|token| token.to_str().ok())
@@ -200,6 +213,18 @@ async fn handle_request(
         let client = builder.build();
         clients.insert(auth_token, client.clone());
         client
+=======
+    let (method, m) = match method {
+        HttpMethod::DELETE => (Method::Delete, "DELETE"),
+        HttpMethod::GET => (Method::Get, "GET"),
+        HttpMethod::PATCH => (Method::Patch, "PATCH"),
+        HttpMethod::POST => (Method::Post, "POST"),
+        HttpMethod::PUT => (Method::Put, "PUT"),
+        _ => {
+            error!("Unsupported HTTP method in request");
+            return Err(RequestError::InvalidMethod { method });
+        }
+>>>>>>> de653114c5d2a26cbb284a8d3c2f78acb2821f6c
     };
 
     let trimmed_path = if uri.path().starts_with(&api_url) {
@@ -207,7 +232,7 @@ async fn handle_request(
     } else {
         uri.path().to_owned()
     };
-    let path = Path::try_from((method.clone(), trimmed_path.as_ref())).context(InvalidPath)?;
+    let path = Path::try_from((method, trimmed_path.as_ref())).context(InvalidPath)?;
 
     let bytes = (hyper::body::to_bytes(body).await.context(ChunkingRequest)?).to_vec();
 
@@ -221,7 +246,6 @@ async fn handle_request(
     };
     let body = if bytes.is_empty() { None } else { Some(bytes) };
     let p = path_name(&path);
-    let m = method.to_string();
     let raw_request = TwilightRequest {
         body,
         form: None,

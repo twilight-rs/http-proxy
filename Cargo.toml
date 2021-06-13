@@ -5,7 +5,7 @@ name = "twilight-http-proxy"
 version = "0.1.0"
 
 [dependencies]
-twilight-http = { version = "0.3.6", default-features = false, features = ["rustls"] }
+twilight-http = { version = "0.4", default-features = false, features = ["rustls-webpki-roots"] }
 hyper = { version = "0.14", features = ["tcp", "server", "http1", "http2"] }
 http = "0.2"
 dashmap = "4.0"
@@ -16,9 +16,9 @@ snafu = "0.6"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
 
 # Only used by the `expose-metrics` feature.
-metrics = { version = "0.14", optional = true }
-metrics-exporter-prometheus = { version = "0.3", optional = true }
-lazy_static = {version = "1.4", optional = true }
+metrics = { version = "0.16", optional = true }
+metrics-exporter-prometheus = { version = "0.5", optional = true }
+lazy_static = { version = "1.4", optional = true }
 
 [features]
 default = []
