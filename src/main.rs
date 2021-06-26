@@ -20,7 +20,7 @@ use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twilight_http::{
     client::Client,
-    request::{Method, Request as TwilightRequest},
+    request::{Method, RequestBuilder},
     routing::Path,
     API_VERSION,
 };
@@ -174,6 +174,12 @@ fn path_name(path: &Path) -> &'static str {
         Path::GuildsIdVoiceStates(..) => "Guild voice states",
         Path::GuildsIdWelcomeScreen(..) => "Guild welcome screen",
         Path::WebhooksIdTokenMessagesId(..) => "Specific webhook message",
+        Path::ApplicationCommand(..) => "Application commands",
+        Path::ApplicationCommandId(..) => "Application command",
+        Path::ApplicationGuildCommand(..) => "Application commands in guild",
+        Path::ApplicationGuildCommandId(..) => "Application command in guild",
+        Path::InteractionCallback(..) => "Interaction callback",
+        Path::StageInstances => "Stage instances",
         _ => "Unknown path!",
     }
 }
@@ -215,23 +221,18 @@ async fn handle_request(
     let bytes = (hyper::body::to_bytes(body).await.context(ChunkingRequest)?).to_vec();
 
     let path_and_query = match uri.path_and_query() {
-        Some(v) => v.as_str().replace(&api_url, "").into(),
+        Some(v) => v.as_str().replace(&api_url, ""),
         None => {
             debug!("No path in URI: {:?}", uri);
 
             return Err(RequestError::NoPath { uri });
         }
     };
-    let body = if bytes.is_empty() { None } else { Some(bytes) };
     let p = path_name(&path);
-    let raw_request = TwilightRequest {
-        body,
-        form: None,
-        headers: Some(headers),
-        method,
-        path,
-        path_str: path_and_query,
-    };
+    let raw_request = RequestBuilder::raw(method, path, path_and_query)
+        .body(bytes)
+        .headers(headers.into_iter().map(|(k, v)| (k.unwrap(), v)))
+        .build();
 
     #[cfg(feature = "expose-metrics")]
     let start = Instant::now();
