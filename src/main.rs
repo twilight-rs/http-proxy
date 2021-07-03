@@ -231,7 +231,7 @@ async fn handle_request(
     let p = path_name(&path);
     let raw_request = RequestBuilder::raw(method, path, path_and_query)
         .body(bytes)
-        .headers(headers.into_iter().map(|(k, v)| (k.unwrap(), v)))
+        .headers(headers.into_iter().filter_map(|(k, v)| k.map(|h| (h, v))))
         .build();
 
     #[cfg(feature = "expose-metrics")]
