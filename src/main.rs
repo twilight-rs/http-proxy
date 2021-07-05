@@ -1,5 +1,6 @@
 mod error;
 
+use dashmap::DashMap;
 use error::{ChunkingRequest, InvalidPath, RequestError, RequestIssue};
 use http::{request::Parts, Method as HttpMethod};
 use hyper::{
@@ -14,6 +15,7 @@ use std::{
     error::Error,
     net::{IpAddr, SocketAddr},
     str::FromStr,
+    sync::Arc,
 };
 use tracing::{debug, error, info, trace};
 use tracing_log::LogTracer;
@@ -41,6 +43,8 @@ lazy_static! {
         env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into());
 }
 
+type ClientMap = Arc<DashMap<Option<String>, Client>>;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     LogTracer::init()?;
@@ -59,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = IpAddr::from_str(&host_raw)?;
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
-    let client = Client::new(env::var("DISCORD_TOKEN")?);
+    let clients: ClientMap = Arc::new(DashMap::new());
 
     let address = SocketAddr::from((host, port));
 
@@ -78,7 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
         debug!("Connection from: {:?}", addr);
-        let client = client.clone();
+        let clients = clients.clone();
 
         #[cfg(feature = "expose-metrics")]
         let handle = handle.clone();
@@ -92,13 +96,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     if uri.path() == "/metrics" {
                         handle_metrics(handle.clone())
                     } else {
-                        Box::pin(handle_request(client.clone(), incoming))
+                        Box::pin(handle_request(clients.clone(), incoming))
                     }
                 }
 
                 #[cfg(not(feature = "expose-metrics"))]
                 {
-                    handle_request(client.clone(), incoming)
+                    handle_request(clients.clone(), incoming)
                 }
             }))
         }
@@ -185,7 +189,7 @@ fn path_name(path: &Path) -> &'static str {
 }
 
 async fn handle_request(
-    client: Client,
+    clients: ClientMap,
     request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
     let api_url: String = format!("/api/v{}/", API_VERSION);
@@ -199,6 +203,23 @@ async fn handle_request(
         ..
     } = parts;
 
+<<<<<<< HEAD
+    let auth_token = headers
+        .get(http::header::AUTHORIZATION)
+        .and_then(|token| token.to_str().ok())
+        .map(|token| token.to_owned());
+
+    let client = if let Some(client) = clients.get(&auth_token) {
+        client.clone()
+    } else {
+        let mut builder = Client::builder();
+        if let Some(ref token) = auth_token {
+            builder = builder.token(token.as_str());
+        }
+        let client = builder.build();
+        clients.insert(auth_token, client.clone());
+        client
+=======
     let (method, m) = match method {
         HttpMethod::DELETE => (Method::Delete, "DELETE"),
         HttpMethod::GET => (Method::Get, "GET"),
@@ -209,6 +230,7 @@ async fn handle_request(
             error!("Unsupported HTTP method in request");
             return Err(RequestError::InvalidMethod { method });
         }
+>>>>>>> de653114c5d2a26cbb284a8d3c2f78acb2821f6c
     };
 
     let trimmed_path = if uri.path().starts_with(&api_url) {
