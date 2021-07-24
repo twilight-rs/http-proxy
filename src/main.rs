@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // The closure inside `make_service_fn` is run for each connection,
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
-        debug!("Connection from: {:?}", addr);
+        trace!("Connection from: {:?}", addr);
         let client = client.clone();
 
         #[cfg(feature = "expose-metrics")]
@@ -189,7 +189,7 @@ async fn handle_request(
     request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
     let api_url: String = format!("/api/v{}/", API_VERSION);
-    debug!("Incoming request: {:?}", request);
+    trace!("Incoming request: {:?}", request);
 
     let (parts, body) = request.into_parts();
     let Parts {
@@ -206,7 +206,7 @@ async fn handle_request(
         HttpMethod::POST => (Method::Post, "POST"),
         HttpMethod::PUT => (Method::Put, "PUT"),
         _ => {
-            error!("Unsupported HTTP method in request");
+            error!("Unsupported HTTP method in request, {}", method);
             return Err(RequestError::InvalidMethod { method });
         }
     };
@@ -216,14 +216,30 @@ async fn handle_request(
     } else {
         uri.path().to_owned()
     };
-    let path = Path::try_from((method, trimmed_path.as_ref())).context(InvalidPath)?;
 
-    let bytes = (hyper::body::to_bytes(body).await.context(ChunkingRequest)?).to_vec();
+    let path = match Path::try_from((method, trimmed_path.as_ref())).context(InvalidPath) {
+        Ok(path) => path,
+        Err(e) => {
+            error!(
+                "Failed to parse path for {:?} {}: {:?}",
+                method, trimmed_path, e
+            );
+            return Err(e);
+        }
+    };
+
+    let bytes = match hyper::body::to_bytes(body).await.context(ChunkingRequest) {
+        Ok(body) => body.to_vec(),
+        Err(e) => {
+            error!("Failed to receive incoming request body: {:?}", e);
+            return Err(e);
+        }
+    };
 
     let path_and_query = match uri.path_and_query() {
         Some(v) => v.as_str().replace(&api_url, ""),
         None => {
-            debug!("No path in URI: {:?}", uri);
+            error!("No path in URI: {:?}", uri);
 
             return Err(RequestError::NoPath { uri });
         }
@@ -237,7 +253,13 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     let start = Instant::now();
 
-    let resp = client.raw(raw_request).await.context(RequestIssue)?;
+    let resp = match client.raw(raw_request).await.context(RequestIssue) {
+        Ok(resp) => resp,
+        Err(e) => {
+            error!("Failed to receive reply body: {:?}", e);
+            return Err(e);
+        }
+    };
 
     #[cfg(feature = "expose-metrics")]
     let end = Instant::now();
@@ -247,7 +269,7 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
 
-    debug!("{} {}: {}", m, p, resp.status());
+    debug!("{} {} ({}): {}", m, p, uri.path(), resp.status());
 
     Ok(resp)
 }
