@@ -1,6 +1,9 @@
-use http::{Method, Uri};
+use http::{Error as HttpError, Method, Uri};
 use hyper::Error as HyperError;
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt::{Display, Formatter, Result},
+};
 use twilight_http::{
     error::Error as TwilightError, response::DeserializeBodyError, routing::PathParseError,
 };
@@ -12,44 +15,42 @@ pub enum RequestError {
     InvalidPath { source: PathParseError },
     InvalidMethod { method: Method },
     NoPath { uri: Uri },
-    ResponseAssembly { source: http::Error },
+    ResponseAssembly { source: HttpError },
     RequestIssue { source: TwilightError },
 }
 
-impl fmt::Display for RequestError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for RequestError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::ChunkingRequest { source } => {
                 f.write_str("ChunkingRequest: ")?;
-                f.write_str(&source.to_string())?;
+                source.fmt(f)
             }
             Self::DeserializeBody { source } => {
                 f.write_str("DeserializeBody: ")?;
-                f.write_str(&source.to_string())?;
+                source.fmt(f)
             }
             Self::InvalidPath { source } => {
                 f.write_str("InvalidPath: ")?;
-                f.write_str(&source.to_string())?;
+                source.fmt(f)
             }
             Self::InvalidMethod { method } => {
                 f.write_str("InvalidMethod: ")?;
-                f.write_str(&method.to_string())?;
+                method.fmt(f)
             }
             Self::NoPath { uri } => {
-                f.write_str("InvalidMethod: ")?;
-                f.write_str(&uri.to_string())?;
+                f.write_str("NoPath: ")?;
+                uri.fmt(f)
             }
             Self::ResponseAssembly { source } => {
                 f.write_str("ResponseAssembly: ")?;
-                f.write_str(&source.to_string())?;
+                source.fmt(f)
             }
             Self::RequestIssue { source } => {
                 f.write_str("RequestIssue: ")?;
-                f.write_str(&source.to_string())?;
+                source.fmt(f)
             }
         }
-
-        Ok(())
     }
 }
 

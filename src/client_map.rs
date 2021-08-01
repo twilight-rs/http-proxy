@@ -10,7 +10,7 @@ pub struct ClientMap {
     inner: Arc<DashMap<String, (Client, Instant)>>,
 }
 
-async fn eliminate_old_clients(map: Arc<DashMap<String, (Client, Instant)>>) {
+async fn reap_old_clients(map: Arc<DashMap<String, (Client, Instant)>>) {
     let client_reap_interval =
         Duration::from_secs(var("CLIENT_REAP_INTERVAL").map_or(600, |timeout| {
             if let Ok(timeout_secs) = timeout.parse() {
@@ -29,7 +29,9 @@ async fn eliminate_old_clients(map: Arc<DashMap<String, (Client, Instant)>>) {
                 3600
             }
         }));
+
     let mut interval = interval(client_reap_interval);
+
     loop {
         interval.tick().await;
         let right_now = Instant::now();
@@ -53,7 +55,7 @@ impl ClientMap {
         let inner = Arc::new(DashMap::new());
         let default = Client::new(default_client_token);
 
-        tokio::spawn(eliminate_old_clients(inner.clone()));
+        tokio::spawn(reap_old_clients(inner.clone()));
 
         Self {
             default,
@@ -69,6 +71,7 @@ impl ClientMap {
                 _ => {
                     let access_time = Instant::now();
                     let maybe_entry = self.inner.get_mut(token);
+
                     if let Some(mut entry) = maybe_entry {
                         entry.1 = access_time;
                         entry.0.clone()
@@ -85,12 +88,14 @@ impl ClientMap {
                                                 old
                                             }
                                         });
+
                                     oldest_entry.key().to_string()
                                 };
                                 self.inner.remove(&key);
                                 debug!("Removed oldest entry from HTTP client cache");
                             }
                         }
+
                         let client = Client::new(token.to_string());
                         self.inner
                             .insert(token.to_string(), (client.clone(), access_time));
