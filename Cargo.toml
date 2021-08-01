@@ -12,7 +12,7 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
 tracing-log = "0.1"
 tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
-twilight-http = { version = "0.5", default-features = false, features = ["rustls-webpki-roots"] }
+twilight-http = { version = "0.6.1", default-features = false, features = ["rustls-webpki-roots"] }
 
 # Only used by the `expose-metrics` feature.
 metrics = { version = "0.17", optional = true }

@@ -262,7 +262,7 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     let start = Instant::now();
 
-    let resp = match client.raw(raw_request).await {
+    let resp = match client.request::<Vec<u8>>(raw_request).await {
         Ok(resp) => resp,
         Err(e) => {
             error!("Failed to receive reply body: {:?}", e);
@@ -275,12 +275,27 @@ async fn handle_request(
 
     trace!("Response: {:?}", resp);
 
+    let status = resp.status();
     #[cfg(feature = "expose-metrics")]
-    histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
+    histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
 
-    debug!("{} {} ({}): {}", m, p, uri.path(), resp.status());
+    let reply = match resp.bytes().await {
+        Ok(body) => match Response::builder().body(Body::from(body)) {
+            Ok(response) => response,
+            Err(e) => {
+                error!("Failed to re-assemble body to reply with: {}", e);
+                return Err(RequestError::ResponseAssembly { source: e });
+            }
+        },
+        Err(e) => {
+            error!("Failed to receive reply body: {:?}", e);
+            return Err(RequestError::DeserializeBody { source: e });
+        }
+    };
 
-    Ok(resp)
+    debug!("{} {} ({}): {}", m, p, uri.path(), status);
+
+    Ok(reply)
 }
 
 #[cfg(feature = "expose-metrics")]

@@ -91,7 +91,7 @@ impl ClientMap {
                                 debug!("Removed oldest entry from HTTP client cache");
                             }
                         }
-                        let client = Client::new(token);
+                        let client = Client::new(token.to_string());
                         self.inner
                             .insert(token.to_string(), (client.clone(), access_time));
                         client

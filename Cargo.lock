@@ -930,16 +930,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-value"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
-dependencies = [
- "ordered-float",
- "serde",
-]
-
-[[package]]
 name = "serde_derive"
 version = "1.0.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1197,9 +1187,9 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "twilight-http"
-version = "0.5.7"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06a2518516b5ac7a2da957aa131e1f6ecf282d3718be85727b3095f714438eb7"
+checksum = "ec03fa6e8c7e3127239e536df797ea14a26bd7713960866e7d59c053ce171cd5"
 dependencies = [
  "hyper",
  "hyper-rustls",
@@ -1230,13 +1220,12 @@ dependencies = [
 
 [[package]]
 name = "twilight-model"
-version = "0.5.4"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85f3e738e706213e16d53c7faf76e5ea0a06f3d2ddc8221059bb1e52bda4568c"
+checksum = "6993d941e15df71b20c291d1e825be8f88ef8f884499bd237d6ea4436c26f8b9"
 dependencies = [
  "bitflags",
  "serde",
- "serde-value",
  "serde_repr",
  "tracing",
 ]
