@@ -2,7 +2,7 @@ use http::{Error as HttpError, Method, Uri};
 use hyper::Error as HyperError;
 use std::{
     error::Error,
-    fmt::{Display, Formatter, Result},
+    fmt::{Display, Formatter, Result as FmtResult},
 };
 use twilight_http::{
     error::Error as TwilightError, response::DeserializeBodyError, routing::PathParseError,
@@ -20,7 +20,7 @@ pub enum RequestError {
 }
 
 impl Display for RequestError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::ChunkingRequest { source } => {
                 f.write_str("ChunkingRequest: ")?;

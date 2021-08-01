@@ -20,6 +20,7 @@ async fn reap_old_clients(map: Arc<DashMap<String, (Client, Instant)>>) {
                 600
             }
         }));
+
     let client_decay_timeout =
         Duration::from_secs(var("CLIENT_DECAY_TIEOUT").map_or(3600, |timeout| {
             if let Ok(timeout_secs) = timeout.parse() {
@@ -52,6 +53,7 @@ impl ClientMap {
                 None
             }
         });
+
         let inner = Arc::new(DashMap::new());
         let default = Client::new(default_client_token);
 
@@ -91,6 +93,7 @@ impl ClientMap {
 
                                     oldest_entry.key().to_string()
                                 };
+
                                 self.inner.remove(&key);
                                 debug!("Removed oldest entry from HTTP client cache");
                             }
@@ -99,6 +102,7 @@ impl ClientMap {
                         let client = Client::new(token.to_string());
                         self.inner
                             .insert(token.to_string(), (client.clone(), access_time));
+
                         client
                     }
                 }
