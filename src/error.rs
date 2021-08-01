@@ -59,7 +59,7 @@ impl Error for RequestError {
         match self {
             Self::ChunkingRequest { source } => Some(source),
             Self::DeserializeBody { source } => Some(source),
-            Self::InvalidPath { source, .. } => Some(source),
+            Self::InvalidPath { source } => Some(source),
             Self::InvalidMethod { .. } => None,
             Self::NoPath { .. } => None,
             Self::ResponseAssembly { source } => Some(source),
