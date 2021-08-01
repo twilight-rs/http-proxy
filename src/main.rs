@@ -1,5 +1,7 @@
+mod client_map;
 mod error;
 
+use client_map::ClientMap;
 use error::RequestError;
 use http::{request::Parts, Method as HttpMethod};
 use hyper::{
@@ -13,6 +15,7 @@ use std::{
     error::Error,
     net::{IpAddr, SocketAddr},
     str::FromStr,
+    sync::Arc,
 };
 use tracing::{debug, error, info, trace};
 use tracing_log::LogTracer;
@@ -25,7 +28,7 @@ use twilight_http::{
 };
 
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, sync::Arc, time::Instant};
+use std::{future::Future, pin::Pin, time::Instant};
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
@@ -58,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = IpAddr::from_str(&host_raw)?;
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
-    let client = Client::new(env::var("DISCORD_TOKEN")?);
+    let client_map = Arc::new(ClientMap::new(env::var("DISCORD_TOKEN")?));
 
     let address = SocketAddr::from((host, port));
 
@@ -77,13 +80,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
         trace!("Connection from: {:?}", addr);
-        let client = client.clone();
+        let client_map = client_map.clone();
 
         #[cfg(feature = "expose-metrics")]
         let handle = handle.clone();
 
         async move {
             Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
+                let token = incoming
+                    .headers()
+                    .get("authorization")
+                    .map(|value| value.to_str().ok())
+                    .flatten();
+                let client = client_map.get(token);
+
                 #[cfg(feature = "expose-metrics")]
                 {
                     let uri = incoming.uri();
@@ -91,13 +101,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     if uri.path() == "/metrics" {
                         handle_metrics(handle.clone())
                     } else {
-                        Box::pin(handle_request(client.clone(), incoming))
+                        Box::pin(handle_request(client, incoming))
                     }
                 }
 
                 #[cfg(not(feature = "expose-metrics"))]
                 {
-                    handle_request(client.clone(), incoming)
+                    handle_request(client, incoming)
                 }
             }))
         }
