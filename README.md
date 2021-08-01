@@ -30,6 +30,8 @@ This will use the running proxy, skip the ratelimiter (since the proxy does
 ratelimiting itself), and will request over HTTP. If your proxy is configured
 to listen via HTTPS, then don't use HTTP.
 
+By default, the proxy will use the token provided in the `DISCORD_TOKEN` enviroment variable for all requests. You can bypass this by providing a different token in the `Authorization` header yourself.
+
 ### Running via Docker
 
 Prebuilt Docker images are published on [Docker Hub].
@@ -57,6 +59,12 @@ $ DISCORD_TOKEN="my token" PORT=3000 ./target/release/twilight_http_proxy
 ```
 
 This will set the discord token to `"my token"` and bind to port 3000.
+
+You can configure the behaviour when using multiple tokens with these enviroment variables:
+
+* `CLIENT_DECAY_TIMEOUT` (defaults to 1 hour) sets the timeout after which a HTTP client (and associated ratelimit information) will be dropped due to not being used anymore
+* `CLIENT_CACHE_MAX_SIZE` (defaults to no limit) limits the amount of HTTP clients in the cache - if full, the least recently used client will be removed
+* `CLIENT_REAP_INTERVAL` (defaults to 10 minutes) changes the interval at which clients will be checked for decay
 
 ## Grafana metrics
 The http proxy can expose grafana metrics when compiled with the ``expose-metrics`` feature. These metrics are then available on the ``/metrics`` endpoint.
