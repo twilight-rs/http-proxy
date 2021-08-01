@@ -62,9 +62,9 @@ This will set the discord token to `"my token"` and bind to port 3000.
 
 You can configure the behaviour when using multiple tokens with these enviroment variables:
 
-* `CLIENT_DECAY_TIMEOUT` (defaults to 1 hour) sets the timeout after which a HTTP client (and associated ratelimit information) will be dropped due to not being used anymore
+* `CLIENT_DECAY_TIMEOUT` (in seconds; defaults to 1 hour) sets the timeout after which a HTTP client (and associated ratelimit information) will be dropped due to not being used anymore
 * `CLIENT_CACHE_MAX_SIZE` (defaults to no limit) limits the amount of HTTP clients in the cache - if full, the least recently used client will be removed
-* `CLIENT_REAP_INTERVAL` (defaults to 10 minutes) changes the interval at which clients will be checked for decay
+* `CLIENT_REAP_INTERVAL` (in seconds; defaults to 10 minutes) changes the interval at which clients will be checked for decay
 
 ## Grafana metrics
 The http proxy can expose grafana metrics when compiled with the ``expose-metrics`` feature. These metrics are then available on the ``/metrics`` endpoint.
