@@ -1,13 +1,12 @@
 mod error;
 
-use error::{ChunkingRequest, InvalidPath, RequestError, RequestIssue};
+use error::RequestError;
 use http::{request::Parts, Method as HttpMethod};
 use hyper::{
     body::Body,
     server::{conn::AddrStream, Server},
     service, Request, Response,
 };
-use snafu::ResultExt;
 use std::{
     convert::TryFrom,
     env,
@@ -217,22 +216,22 @@ async fn handle_request(
         uri.path().to_owned()
     };
 
-    let path = match Path::try_from((method, trimmed_path.as_ref())).context(InvalidPath) {
+    let path = match Path::try_from((method, trimmed_path.as_ref())) {
         Ok(path) => path,
         Err(e) => {
             error!(
                 "Failed to parse path for {:?} {}: {:?}",
                 method, trimmed_path, e
             );
-            return Err(e);
+            return Err(RequestError::InvalidPath { source: e });
         }
     };
 
-    let bytes = match hyper::body::to_bytes(body).await.context(ChunkingRequest) {
+    let bytes = match hyper::body::to_bytes(body).await {
         Ok(body) => body.to_vec(),
         Err(e) => {
             error!("Failed to receive incoming request body: {:?}", e);
-            return Err(e);
+            return Err(RequestError::ChunkingRequest { source: e });
         }
     };
 
@@ -253,11 +252,11 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     let start = Instant::now();
 
-    let resp = match client.raw(raw_request).await.context(RequestIssue) {
+    let resp = match client.raw(raw_request).await {
         Ok(resp) => resp,
         Err(e) => {
             error!("Failed to receive reply body: {:?}", e);
-            return Err(e);
+            return Err(RequestError::RequestIssue { source: e });
         }
     };
 

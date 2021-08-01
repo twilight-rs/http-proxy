@@ -11,12 +11,11 @@ http = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
 tracing-log = "0.1"
-snafu = "0.6"
 tokio = { version = "1.0", features = ["rt", "rt-multi-thread", "macros"] }
 
 # Only used by the `expose-metrics` feature.
-metrics = { version = "0.16", optional = true }
-metrics-exporter-prometheus = { version = "0.5", optional = true }
+metrics = { version = "0.17", optional = true }
+metrics-exporter-prometheus = { version = "0.6", optional = true }
 lazy_static = { version = "1.4", optional = true }
 
 [features]
