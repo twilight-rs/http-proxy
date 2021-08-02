@@ -23,47 +23,35 @@ impl Display for RequestError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::ChunkingRequest { source } => {
-                f.write_str("ChunkingRequest: ")?;
+                f.write_str("error when chunking request: ")?;
                 source.fmt(f)
             }
             Self::DeserializeBody { source } => {
-                f.write_str("DeserializeBody: ")?;
+                f.write_str("failed to deserialize body: ")?;
                 source.fmt(f)
             }
             Self::InvalidPath { source } => {
-                f.write_str("InvalidPath: ")?;
+                f.write_str("invalid path: ")?;
                 source.fmt(f)
             }
             Self::InvalidMethod { method } => {
-                f.write_str("InvalidMethod: ")?;
+                f.write_str("invalid method: ")?;
                 method.fmt(f)
             }
             Self::NoPath { uri } => {
-                f.write_str("NoPath: ")?;
+                f.write_str("no path in uri: ")?;
                 uri.fmt(f)
             }
             Self::ResponseAssembly { source } => {
-                f.write_str("ResponseAssembly: ")?;
+                f.write_str("error during response assembly: ")?;
                 source.fmt(f)
             }
             Self::RequestIssue { source } => {
-                f.write_str("RequestIssue: ")?;
+                f.write_str("error during request: ")?;
                 source.fmt(f)
             }
         }
     }
 }
 
-impl Error for RequestError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::ChunkingRequest { source } => Some(source),
-            Self::DeserializeBody { source } => Some(source),
-            Self::InvalidPath { source } => Some(source),
-            Self::InvalidMethod { .. } => None,
-            Self::NoPath { .. } => None,
-            Self::ResponseAssembly { source } => Some(source),
-            Self::RequestIssue { source } => Some(source),
-        }
-    }
-}
+impl Error for RequestError {}

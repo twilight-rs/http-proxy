@@ -1,4 +1,4 @@
-use dashmap::DashMap;
+use dashmap::{mapref::multiple::RefMulti, DashMap};
 use std::{env::var, sync::Arc};
 use tokio::time::{interval, Duration, Instant};
 use tracing::{debug, warn};
@@ -66,6 +66,21 @@ impl ClientMap {
         }
     }
 
+    fn lru(&self) -> Option<RefMulti<String, (Client, Instant)>> {
+        self.inner.iter().next().map(|first_entry| {
+            self.inner.iter().fold(
+                first_entry,
+                |old, next| {
+                    if old.1 > next.1 {
+                        next
+                    } else {
+                        old
+                    }
+                },
+            )
+        })
+    }
+
     pub fn get(&self, token: Option<&str>) -> Client {
         if let Some(token) = token {
             match self.default.token() {
@@ -78,30 +93,23 @@ impl ClientMap {
                         entry.1 = access_time;
                         entry.0.clone()
                     } else {
-                        if let Some(max_size) = self.max_size {
-                            if self.inner.len() >= max_size && max_size > 0 {
-                                let key = {
-                                    let first_entry = self.inner.iter().next().unwrap();
-                                    let oldest_entry =
-                                        self.inner.iter().fold(first_entry, |old, next| {
-                                            if old.1 > next.1 {
-                                                next
-                                            } else {
-                                                old
-                                            }
-                                        });
+                        if self
+                            .max_size
+                            .filter(|max_size| self.inner.len() >= *max_size && max_size > &0)
+                            .is_some()
+                        {
+                            let key = self.lru().unwrap().key().to_string();
 
-                                    oldest_entry.key().to_string()
-                                };
-
-                                self.inner.remove(&key);
-                                debug!("Removed oldest entry from HTTP client cache");
-                            }
+                            self.inner.remove(&key);
+                            debug!("Removed oldest entry from HTTP client cache");
                         }
 
                         let client = Client::new(token.to_string());
-                        self.inner
-                            .insert(token.to_string(), (client.clone(), access_time));
+
+                        if self.max_size.filter(|max| max != &0).is_some() {
+                            self.inner
+                                .insert(token.to_string(), (client.clone(), access_time));
+                        }
 
                         client
                     }
