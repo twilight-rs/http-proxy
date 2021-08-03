@@ -3,7 +3,7 @@ mod error;
 
 use client_map::ClientMap;
 use error::RequestError;
-use http::{request::Parts, Method as HttpMethod};
+use http::{request::Parts, Method as HttpMethod, StatusCode};
 use hyper::{
     body::Body,
     server::{conn::AddrStream, Server},
@@ -279,8 +279,15 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
 
+    let mut response_builder =
+        Response::builder().status(StatusCode::from_u16(status.raw()).unwrap());
+
+    for (header_name, header_value) in resp.headers() {
+        response_builder = response_builder.header(header_name, header_value);
+    }
+
     let reply = match resp.bytes().await {
-        Ok(body) => match Response::builder().body(Body::from(body)) {
+        Ok(body) => match response_builder.body(Body::from(body)) {
             Ok(response) => response,
             Err(e) => {
                 error!("Failed to re-assemble body to reply with: {}", e);
