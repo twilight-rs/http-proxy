@@ -1213,7 +1213,6 @@ dependencies = [
  "metrics-exporter-prometheus",
  "tokio",
  "tracing",
- "tracing-log",
  "tracing-subscriber",
  "twilight-http",
 ]
