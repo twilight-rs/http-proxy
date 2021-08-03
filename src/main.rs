@@ -1,19 +1,21 @@
+mod client_map;
 mod error;
 
-use error::{ChunkingRequest, InvalidPath, RequestError, RequestIssue};
-use http::{request::Parts, Method as HttpMethod};
+use client_map::ClientMap;
+use error::RequestError;
+use http::{request::Parts, Method as HttpMethod, StatusCode};
 use hyper::{
     body::Body,
     server::{conn::AddrStream, Server},
     service, Request, Response,
 };
-use snafu::ResultExt;
 use std::{
     convert::TryFrom,
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
     str::FromStr,
+    sync::Arc,
 };
 use tracing::{debug, error, info, trace};
 use tracing_log::LogTracer;
@@ -26,7 +28,7 @@ use twilight_http::{
 };
 
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, sync::Arc, time::Instant};
+use std::{future::Future, pin::Pin, time::Instant};
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
@@ -59,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = IpAddr::from_str(&host_raw)?;
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
-    let client = Client::new(env::var("DISCORD_TOKEN")?);
+    let client_map = Arc::new(ClientMap::new(env::var("DISCORD_TOKEN")?));
 
     let address = SocketAddr::from((host, port));
 
@@ -78,13 +80,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
         trace!("Connection from: {:?}", addr);
-        let client = client.clone();
+        let client_map = client_map.clone();
 
         #[cfg(feature = "expose-metrics")]
         let handle = handle.clone();
 
         async move {
             Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
+                let token = incoming
+                    .headers()
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok());
+                let client = client_map.get(token);
+
                 #[cfg(feature = "expose-metrics")]
                 {
                     let uri = incoming.uri();
@@ -92,13 +100,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     if uri.path() == "/metrics" {
                         handle_metrics(handle.clone())
                     } else {
-                        Box::pin(handle_request(client.clone(), incoming))
+                        Box::pin(handle_request(client, incoming))
                     }
                 }
 
                 #[cfg(not(feature = "expose-metrics"))]
                 {
-                    handle_request(client.clone(), incoming)
+                    handle_request(client, incoming)
                 }
             }))
         }
@@ -119,16 +127,15 @@ fn path_name(path: &Path) -> &'static str {
     match path {
         Path::ChannelsId(..) => "Channel",
         Path::ChannelsIdInvites(..) => "Channel invite",
-        Path::ChannelsIdMessages(..) => "Channel message",
+        Path::ChannelsIdMessages(..) | Path::ChannelsIdMessagesId(..) => "Channel message",
         Path::ChannelsIdMessagesBulkDelete(..) => "Bulk delete message",
-        Path::ChannelsIdMessagesId(..) => "Channel message",
         Path::ChannelsIdMessagesIdReactions(..) => "Message reaction",
         Path::ChannelsIdMessagesIdReactionsUserIdType(..) => "Message reaction for user",
         Path::ChannelsIdPermissionsOverwriteId(..) => "Channel permission override",
         Path::ChannelsIdPins(..) => "Channel pins",
         Path::ChannelsIdPinsMessageId(..) => "Specific channel pin",
         Path::ChannelsIdTyping(..) => "Typing indicator",
-        Path::ChannelsIdWebhooks(..) => "Webhook",
+        Path::ChannelsIdWebhooks(..) | Path::WebhooksId(..) => "Webhook",
         Path::Gateway => "Gateway",
         Path::GatewayBot => "Gateway bot info",
         Path::Guilds => "Guilds",
@@ -162,7 +169,6 @@ fn path_name(path: &Path) -> &'static str {
         Path::UsersIdGuilds => "User in guild",
         Path::UsersIdGuildsId => "Guild from user",
         Path::VoiceRegions => "Voice region list",
-        Path::WebhooksId(..) => "Webhook",
         Path::OauthApplicationsMe => "Current application info",
         Path::ChannelsIdMessagesIdCrosspost(..) => "Crosspost message",
         Path::ChannelsIdRecipients(..) => "Channel recipients",
@@ -217,32 +223,30 @@ async fn handle_request(
         uri.path().to_owned()
     };
 
-    let path = match Path::try_from((method, trimmed_path.as_ref())).context(InvalidPath) {
+    let path = match Path::try_from((method, trimmed_path.as_ref())) {
         Ok(path) => path,
         Err(e) => {
             error!(
                 "Failed to parse path for {:?} {}: {:?}",
                 method, trimmed_path, e
             );
-            return Err(e);
+            return Err(RequestError::InvalidPath { source: e });
         }
     };
 
-    let bytes = match hyper::body::to_bytes(body).await.context(ChunkingRequest) {
+    let bytes = match hyper::body::to_bytes(body).await {
         Ok(body) => body.to_vec(),
         Err(e) => {
             error!("Failed to receive incoming request body: {:?}", e);
-            return Err(e);
+            return Err(RequestError::ChunkingRequest { source: e });
         }
     };
 
-    let path_and_query = match uri.path_and_query() {
-        Some(v) => v.as_str().replace(&api_url, ""),
-        None => {
-            error!("No path in URI: {:?}", uri);
-
-            return Err(RequestError::NoPath { uri });
-        }
+    let path_and_query = if let Some(v) = uri.path_and_query() {
+        v.as_str().replace(&api_url, "")
+    } else {
+        error!("No path in URI: {:?}", uri);
+        return Err(RequestError::NoPath { uri });
     };
     let p = path_name(&path);
     let raw_request = RequestBuilder::raw(method, path, path_and_query)
@@ -253,11 +257,11 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     let start = Instant::now();
 
-    let resp = match client.raw(raw_request).await.context(RequestIssue) {
+    let resp = match client.request::<Vec<u8>>(raw_request).await {
         Ok(resp) => resp,
         Err(e) => {
             error!("Failed to receive reply body: {:?}", e);
-            return Err(e);
+            return Err(RequestError::RequestIssue { source: e });
         }
     };
 
@@ -266,12 +270,34 @@ async fn handle_request(
 
     trace!("Response: {:?}", resp);
 
+    let status = resp.status();
     #[cfg(feature = "expose-metrics")]
-    histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>resp.status().to_string());
+    histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
 
-    debug!("{} {} ({}): {}", m, p, uri.path(), resp.status());
+    let mut response_builder =
+        Response::builder().status(StatusCode::from_u16(status.raw()).unwrap());
 
-    Ok(resp)
+    for (header_name, header_value) in resp.headers() {
+        response_builder = response_builder.header(header_name, header_value);
+    }
+
+    let reply = match resp.bytes().await {
+        Ok(body) => match response_builder.body(Body::from(body)) {
+            Ok(response) => response,
+            Err(e) => {
+                error!("Failed to re-assemble body to reply with: {}", e);
+                return Err(RequestError::ResponseAssembly { source: e });
+            }
+        },
+        Err(e) => {
+            error!("Failed to receive reply body: {:?}", e);
+            return Err(RequestError::DeserializeBody { source: e });
+        }
+    };
+
+    debug!("{} {} ({}): {}", m, p, uri.path(), status);
+
+    Ok(reply)
 }
 
 #[cfg(feature = "expose-metrics")]
