@@ -9,7 +9,7 @@ dashmap = "4.0"
 http = "0.2"
 hyper = { version = "0.14", features = ["tcp", "server", "client", "http1", "http2"] }
 hyper-rustls = { version = "0.22", default-features = false, features = ["webpki-tokio"] }
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = "0.1"
 tracing-log = "0.1"
 tracing-subscriber = { version = "0.2", features = ["fmt", "registry"] }
