@@ -90,8 +90,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let token = incoming
                     .headers()
                     .get("authorization")
-                    .map(|value| value.to_str().ok())
-                    .flatten();
+                    .and_then(|value| value.to_str().ok());
                 let client = client_map.get(token);
 
                 #[cfg(feature = "expose-metrics")]
@@ -128,16 +127,15 @@ fn path_name(path: &Path) -> &'static str {
     match path {
         Path::ChannelsId(..) => "Channel",
         Path::ChannelsIdInvites(..) => "Channel invite",
-        Path::ChannelsIdMessages(..) => "Channel message",
+        Path::ChannelsIdMessages(..) | Path::ChannelsIdMessagesId(..) => "Channel message",
         Path::ChannelsIdMessagesBulkDelete(..) => "Bulk delete message",
-        Path::ChannelsIdMessagesId(..) => "Channel message",
         Path::ChannelsIdMessagesIdReactions(..) => "Message reaction",
         Path::ChannelsIdMessagesIdReactionsUserIdType(..) => "Message reaction for user",
         Path::ChannelsIdPermissionsOverwriteId(..) => "Channel permission override",
         Path::ChannelsIdPins(..) => "Channel pins",
         Path::ChannelsIdPinsMessageId(..) => "Specific channel pin",
         Path::ChannelsIdTyping(..) => "Typing indicator",
-        Path::ChannelsIdWebhooks(..) => "Webhook",
+        Path::ChannelsIdWebhooks(..) | Path::WebhooksId(..) => "Webhook",
         Path::Gateway => "Gateway",
         Path::GatewayBot => "Gateway bot info",
         Path::Guilds => "Guilds",
@@ -171,7 +169,6 @@ fn path_name(path: &Path) -> &'static str {
         Path::UsersIdGuilds => "User in guild",
         Path::UsersIdGuildsId => "Guild from user",
         Path::VoiceRegions => "Voice region list",
-        Path::WebhooksId(..) => "Webhook",
         Path::OauthApplicationsMe => "Current application info",
         Path::ChannelsIdMessagesIdCrosspost(..) => "Crosspost message",
         Path::ChannelsIdRecipients(..) => "Channel recipients",
@@ -245,13 +242,11 @@ async fn handle_request(
         }
     };
 
-    let path_and_query = match uri.path_and_query() {
-        Some(v) => v.as_str().replace(&api_url, ""),
-        None => {
-            error!("No path in URI: {:?}", uri);
-
-            return Err(RequestError::NoPath { uri });
-        }
+    let path_and_query = if let Some(v) = uri.path_and_query() {
+        v.as_str().replace(&api_url, "")
+    } else {
+        error!("No path in URI: {:?}", uri);
+        return Err(RequestError::NoPath { uri });
     };
     let p = path_name(&path);
     let raw_request = RequestBuilder::raw(method, path, path_and_query)

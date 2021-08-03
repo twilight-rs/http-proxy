@@ -8,6 +8,7 @@ use twilight_http::{
     error::Error as TwilightError, response::DeserializeBodyError, routing::PathParseError,
 };
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub enum RequestError {
     ChunkingRequest { source: HyperError },
