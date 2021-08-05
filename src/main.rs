@@ -22,6 +22,7 @@ use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twilight_http::{
     client::Client,
+    error::ErrorType as TwilightErrorType,
     request::{Method, RequestBuilder},
     routing::Path,
     API_VERSION,
@@ -260,6 +261,16 @@ async fn handle_request(
     let resp = match client.request::<Vec<u8>>(raw_request).await {
         Ok(resp) => resp,
         Err(e) => {
+            #[cfg(feature = "expose-metrics")]
+            if let TwilightErrorType::Response {
+                body: _,
+                error: _,
+                status,
+            } = e.kind()
+            {
+                let end = Instant::now();
+                histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
+            }
             error!("Failed to receive reply body: {:?}", e);
             return Err(RequestError::RequestIssue { source: e });
         }
