@@ -262,13 +262,9 @@ async fn handle_request(
         Ok(resp) => resp,
         Err(e) => {
             #[cfg(feature = "expose-metrics")]
-            if let TwilightErrorType::Response {
-                body: _,
-                error: _,
-                status,
-            } = e.kind()
-            {
+            if let TwilightErrorType::Response { status, .. } = e.kind() {
                 let end = Instant::now();
+
                 histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
             }
             error!("Failed to receive reply body: {:?}", e);
