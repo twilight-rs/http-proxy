@@ -265,7 +265,13 @@ async fn handle_request(
             if let TwilightErrorType::Response { status, .. } = e.kind() {
                 let end = Instant::now();
 
-                histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
+                histogram!(
+                    METRIC_KEY.as_str(),
+                    end - start,
+                    "method"=>m.to_string(),
+                    "route"=>p,
+                    "status"=>status.to_string(),
+                );
             }
             error!("Failed to receive reply body: {:?}", e);
             return Err(RequestError::RequestIssue { source: e });
@@ -279,7 +285,13 @@ async fn handle_request(
 
     let status = resp.status();
     #[cfg(feature = "expose-metrics")]
-    histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
+    histogram!(
+        METRIC_KEY.as_str(),
+        end - start,
+        "method"=>m.to_string(),
+        "route"=>p,
+        "status"=>status.to_string(),
+    );
 
     let mut response_builder =
         Response::builder().status(StatusCode::from_u16(status.raw()).unwrap());
