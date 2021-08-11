@@ -67,12 +67,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address = SocketAddr::from((host, port));
 
     #[cfg(feature = "expose-metrics")]
-    let handle: Arc<PrometheusHandle>;
+    let handle: &'static PrometheusHandle;
 
     #[cfg(feature = "expose-metrics")]
     {
         let recorder = PrometheusBuilder::new().build();
-        handle = Arc::new(recorder.handle());
+        handle = Box::leak(Box::new(recorder.handle()));
         metrics::set_boxed_recorder(Box::new(recorder))
             .expect("Failed to create metrics receiver!");
     }
@@ -81,9 +81,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
         trace!("Connection from: {:?}", addr);
-
-        #[cfg(feature = "expose-metrics")]
-        let handle = handle.clone();
 
         async move {
             Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
@@ -98,7 +95,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let uri = incoming.uri();
 
                     if uri.path() == "/metrics" {
-                        handle_metrics(handle.clone())
+                        handle_metrics(handle)
                     } else {
                         Box::pin(handle_request(client, incoming))
                     }
@@ -302,7 +299,7 @@ async fn handle_request(
 
 #[cfg(feature = "expose-metrics")]
 fn handle_metrics(
-    handle: Arc<PrometheusHandle>,
+    handle: &'static PrometheusHandle,
 ) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
     Box::pin(async move {
         Ok(Response::builder()
