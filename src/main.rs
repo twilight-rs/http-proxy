@@ -2,6 +2,7 @@ mod client_map;
 mod error;
 
 use client_map::ClientMap;
+use const_format::concatcp;
 use error::RequestError;
 use http::{request::Parts, Method as HttpMethod, StatusCode};
 use hyper::{
@@ -15,7 +16,6 @@ use std::{
     error::Error,
     net::{IpAddr, SocketAddr},
     str::FromStr,
-    sync::Arc,
 };
 use tracing::{debug, error, info, trace};
 use tracing_log::LogTracer;
@@ -61,7 +61,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = IpAddr::from_str(&host_raw)?;
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
-    let client_map = Arc::new(ClientMap::new(env::var("DISCORD_TOKEN")?));
+    let client_map: &'static ClientMap =
+        Box::leak(Box::new(ClientMap::new(env::var("DISCORD_TOKEN")?)));
 
     let address = SocketAddr::from((host, port));
 
@@ -80,7 +81,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
         trace!("Connection from: {:?}", addr);
-        let client_map = client_map.clone();
 
         #[cfg(feature = "expose-metrics")]
         let handle = handle.clone();
@@ -194,7 +194,7 @@ async fn handle_request(
     client: Client,
     request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
-    let api_url: String = format!("/api/v{}/", API_VERSION);
+    let api_url = concatcp!("/api/v", API_VERSION, "/");
     trace!("Incoming request: {:?}", request);
 
     let (parts, body) = request.into_parts();

@@ -5,6 +5,7 @@ name = "twilight-http-proxy"
 version = "0.1.0"
 
 [dependencies]
+const_format = "0.2"
 dashmap = "4.0"
 http = "0.2"
 hyper = { version = "0.14", features = ["tcp", "server", "http1", "http2"] }
