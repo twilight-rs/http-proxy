@@ -59,6 +59,7 @@ impl ClientMap {
             if let Ok(timeout) = timeout.parse() {
                 Some(Duration::from_secs(timeout))
             } else {
+                warn!("Unable to parse CLIENT_TIMEOUT, proceeding with defaults");
                 None
             }
         });
