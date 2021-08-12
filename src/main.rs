@@ -1,16 +1,22 @@
-mod client_map;
 mod error;
+mod ratelimiter_map;
 
-use client_map::ClientMap;
 use error::RequestError;
-use http::{request::Parts, Method as HttpMethod, StatusCode};
+use http::{
+    header::{AUTHORIZATION, HOST},
+    uri::{Authority, PathAndQuery, Scheme},
+    HeaderValue, Method as HttpMethod, Uri,
+};
 use hyper::{
     body::Body,
+    client::HttpConnector,
     server::{conn::AddrStream, Server},
-    service, Request, Response,
+    service, Client, Request, Response,
 };
+use hyper_rustls::HttpsConnector;
+use ratelimiter_map::RatelimiterMap;
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
@@ -21,8 +27,8 @@ use tracing::{debug, error, info, trace};
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use twilight_http::{
-    client::Client,
-    request::{Method, RequestBuilder},
+    ratelimiting::{RatelimitHeaders, Ratelimiter},
+    request::Method,
     routing::Path,
     API_VERSION,
 };
@@ -61,7 +67,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = IpAddr::from_str(&host_raw)?;
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
-    let client_map = Arc::new(ClientMap::new(env::var("DISCORD_TOKEN")?));
+    let client: Client<_, Body> = Client::builder().build(HttpsConnector::with_webpki_roots());
+    let ratelimiter_map = Arc::new(RatelimiterMap::new(env::var("DISCORD_TOKEN")?));
 
     let address = SocketAddr::from((host, port));
 
@@ -80,7 +87,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // creating a 'service' to handle requests for that specific connection.
     let service = service::make_service_fn(move |addr: &AddrStream| {
         trace!("Connection from: {:?}", addr);
-        let client_map = client_map.clone();
+        let ratelimiter_map = ratelimiter_map.clone();
+        let client = client.clone();
 
         #[cfg(feature = "expose-metrics")]
         let handle = handle.clone();
@@ -91,7 +99,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .headers()
                     .get("authorization")
                     .and_then(|value| value.to_str().ok());
-                let client = client_map.get(token);
+                let (ratelimiter, token) = ratelimiter_map.get(token);
 
                 #[cfg(feature = "expose-metrics")]
                 {
@@ -100,13 +108,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     if uri.path() == "/metrics" {
                         handle_metrics(handle.clone())
                     } else {
-                        Box::pin(handle_request(client, incoming))
+                        Box::pin(handle_request(client.clone(), ratelimiter, token, incoming))
                     }
                 }
 
                 #[cfg(not(feature = "expose-metrics"))]
                 {
-                    handle_request(client, incoming)
+                    handle_request(client.clone(), ratelimiter, token, incoming)
                 }
             }))
         }
@@ -191,36 +199,36 @@ fn path_name(path: &Path) -> &'static str {
 }
 
 async fn handle_request(
-    client: Client,
+    client: Client<HttpsConnector<HttpConnector>, Body>,
+    ratelimiter: Ratelimiter,
+    token: String,
     request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
-    let api_url: String = format!("/api/v{}/", API_VERSION);
+    let mut api_url: String = format!("/api/v{}/", API_VERSION);
     trace!("Incoming request: {:?}", request);
 
-    let (parts, body) = request.into_parts();
-    let Parts {
-        method,
-        uri,
-        headers,
-        ..
-    } = parts;
+    let (mut parts, body) = request.into_parts();
 
-    let (method, m) = match method {
+    let request_path = parts.uri.path().to_string();
+
+    let (method, m) = match parts.method {
         HttpMethod::DELETE => (Method::Delete, "DELETE"),
         HttpMethod::GET => (Method::Get, "GET"),
         HttpMethod::PATCH => (Method::Patch, "PATCH"),
         HttpMethod::POST => (Method::Post, "POST"),
         HttpMethod::PUT => (Method::Put, "PUT"),
         _ => {
-            error!("Unsupported HTTP method in request, {}", method);
-            return Err(RequestError::InvalidMethod { method });
+            error!("Unsupported HTTP method in request, {}", parts.method);
+            return Err(RequestError::InvalidMethod {
+                method: parts.method,
+            });
         }
     };
 
-    let trimmed_path = if uri.path().starts_with(&api_url) {
-        uri.path().replace(&api_url, "")
+    let trimmed_path = if parts.uri.path().starts_with(&api_url) {
+        parts.uri.path().replace(&api_url, "")
     } else {
-        uri.path().to_owned()
+        parts.uri.path().to_owned()
     };
 
     let path = match Path::try_from((method, trimmed_path.as_ref())) {
@@ -234,35 +242,49 @@ async fn handle_request(
         }
     };
 
-    let bytes = match hyper::body::to_bytes(body).await {
-        Ok(body) => body.to_vec(),
+    let p = path_name(&path);
+
+    let header_sender = match ratelimiter.ticket(path).await {
+        Ok(sender) => sender,
         Err(e) => {
-            error!("Failed to receive incoming request body: {:?}", e);
-            return Err(RequestError::ChunkingRequest { source: e });
+            error!("Failed to receive ticket for ratelimiting: {:?}", e);
+            return Err(RequestError::AcquiringTicket { source: e });
         }
     };
 
-    let path_and_query = if let Some(v) = uri.path_and_query() {
-        v.as_str().replace(&api_url, "")
-    } else {
-        error!("No path in URI: {:?}", uri);
-        return Err(RequestError::NoPath { uri });
-    };
-    let p = path_name(&path);
-    let raw_request = RequestBuilder::raw(method, path, path_and_query)
-        .body(bytes)
-        .headers(headers.into_iter().filter_map(|(k, v)| k.map(|h| (h, v))))
-        .build();
+    parts
+        .headers
+        .insert(AUTHORIZATION, token.try_into().unwrap());
+    parts
+        .headers
+        .insert(HOST, HeaderValue::from_static("discord.com"));
+
+    api_url.push_str(&trimmed_path);
+
+    let mut uri_parts = parts.uri.into_parts();
+    uri_parts.scheme = Some(Scheme::HTTPS);
+    uri_parts.authority = Some(Authority::from_static("discord.com"));
+    uri_parts.path_and_query = PathAndQuery::from_maybe_shared(api_url).ok();
+    let new_uri = Uri::from_parts(uri_parts).unwrap();
+    parts.uri = new_uri;
+
+    let new_request = Request::from_parts(parts, body);
 
     #[cfg(feature = "expose-metrics")]
     let start = Instant::now();
 
-    let resp = match client.request::<Vec<u8>>(raw_request).await {
-        Ok(resp) => resp,
+    let resp = match client.request(new_request).await {
+        Ok(response) => response,
         Err(e) => {
-            error!("Failed to receive reply body: {:?}", e);
+            error!("Error when requesting the Discord API: {:?}", e);
             return Err(RequestError::RequestIssue { source: e });
         }
+    };
+
+    let ratelimit_headers = RatelimitHeaders::try_from(resp.headers()).ok();
+    if header_sender.send(ratelimit_headers).is_err() {
+        error!("Error when sending ratelimit headers to ratelimiter");
+        return Err(RequestError::SendingRatelimitHeaders);
     };
 
     #[cfg(feature = "expose-metrics")]
@@ -274,30 +296,9 @@ async fn handle_request(
     #[cfg(feature = "expose-metrics")]
     histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string());
 
-    let mut response_builder =
-        Response::builder().status(StatusCode::from_u16(status.raw()).unwrap());
+    debug!("{} {} ({}): {}", m, p, request_path, status);
 
-    for (header_name, header_value) in resp.headers() {
-        response_builder = response_builder.header(header_name, header_value);
-    }
-
-    let reply = match resp.bytes().await {
-        Ok(body) => match response_builder.body(Body::from(body)) {
-            Ok(response) => response,
-            Err(e) => {
-                error!("Failed to re-assemble body to reply with: {}", e);
-                return Err(RequestError::ResponseAssembly { source: e });
-            }
-        },
-        Err(e) => {
-            error!("Failed to receive reply body: {:?}", e);
-            return Err(RequestError::DeserializeBody { source: e });
-        }
-    };
-
-    debug!("{} {} ({}): {}", m, p, uri.path(), status);
-
-    Ok(reply)
+    Ok(resp)
 }
 
 #[cfg(feature = "expose-metrics")]
