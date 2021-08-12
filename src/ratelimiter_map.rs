@@ -1,5 +1,5 @@
 use dashmap::{mapref::multiple::RefMulti, DashMap};
-use std::{env::var, sync::Arc};
+use std::{env, str::FromStr, sync::Arc};
 use tokio::time::{interval, Duration, Instant};
 use tracing::{debug, warn};
 use twilight_http::ratelimiting::Ratelimiter;
@@ -11,26 +11,29 @@ pub struct RatelimiterMap {
     inner: Arc<DashMap<String, (Ratelimiter, Instant)>>,
 }
 
+fn parse_env<T: FromStr>(key: &str) -> Option<T> {
+    env::var_os(key).and_then(|value| match value.into_string() {
+        Ok(s) => {
+            if let Ok(t) = s.parse() {
+                Some(t)
+            } else {
+                warn!("Unable to parse {}, proceeding with defaults", key);
+                None
+            }
+        }
+        Err(s) => {
+            warn!("{} is not UTF-8: {:?}", key, s);
+            None
+        }
+    })
+}
+
 async fn reap_old_ratelimiters(map: Arc<DashMap<String, (Ratelimiter, Instant)>>) {
     let client_reap_interval =
-        Duration::from_secs(var("CLIENT_REAP_INTERVAL").map_or(600, |timeout| {
-            if let Ok(timeout_secs) = timeout.parse() {
-                timeout_secs
-            } else {
-                warn!("Unable to parse CLIENT_REAP_INTERVAL, proceeding with defaults");
-                600
-            }
-        }));
+        Duration::from_secs(parse_env("CLIENT_REAP_INTERVAL").unwrap_or(600));
 
     let client_decay_timeout =
-        Duration::from_secs(var("CLIENT_DECAY_TIEOUT").map_or(3600, |timeout| {
-            if let Ok(timeout_secs) = timeout.parse() {
-                timeout_secs
-            } else {
-                warn!("Unable to parse CLIENT_DECAY_TIMEOUT, proceeding with defaults");
-                3600
-            }
-        }));
+        Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT").unwrap_or(3600));
 
     let mut interval = interval(client_reap_interval);
 
@@ -55,14 +58,7 @@ impl RatelimiterMap {
             default_token.insert_str(0, "Bot ");
         }
 
-        let max_size = var("CLIENT_CACHE_MAX_SIZE").map_or(None, |size| {
-            if let Ok(size) = size.parse() {
-                Some(size)
-            } else {
-                warn!("Unable to parse CLIENT_CACHE_MAX_SIZE, proceeding with defaults");
-                None
-            }
-        });
+        let max_size = parse_env("CLIENT_CACHE_MAX_SIZE");
 
         let inner = Arc::new(DashMap::new());
         let default = Ratelimiter::new();
