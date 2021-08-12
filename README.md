@@ -65,6 +65,7 @@ You can configure the behaviour when using multiple tokens with these enviroment
 * `CLIENT_DECAY_TIMEOUT` (in seconds; defaults to 1 hour) sets the timeout after which a HTTP client (and associated ratelimit information) will be dropped due to not being used anymore
 * `CLIENT_CACHE_MAX_SIZE` (defaults to no limit) limits the amount of HTTP clients in the cache - if full, the least recently used client will be removed
 * `CLIENT_REAP_INTERVAL` (in seconds; defaults to 10 minutes) changes the interval at which clients will be checked for decay
+* `CLIENT_TIMEOUT` (in seconds; defaults to 10 seconds) sets the timeout after which the proxied HTTP requests will timeout
 
 ## Grafana metrics
 The http proxy can expose grafana metrics when compiled with the ``expose-metrics`` feature. These metrics are then available on the ``/metrics`` endpoint.

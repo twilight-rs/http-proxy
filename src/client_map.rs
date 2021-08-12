@@ -2,12 +2,13 @@ use dashmap::{mapref::multiple::RefMulti, DashMap};
 use std::{env::var, sync::Arc};
 use tokio::time::{interval, Duration, Instant};
 use tracing::{debug, warn};
-use twilight_http::Client;
+use twilight_http::{client::ClientBuilder, Client};
 
 pub struct ClientMap {
     default: Client,
-    max_size: Option<usize>,
     inner: Arc<DashMap<String, (Client, Instant)>>,
+    max_size: Option<usize>,
+    timeout: Option<Duration>,
 }
 
 async fn reap_old_clients(map: Arc<DashMap<String, (Client, Instant)>>) {
@@ -54,15 +55,28 @@ impl ClientMap {
             }
         });
 
+        let timeout = var("CLIENT_TIMEOUT").map_or(None, |timeout| {
+            if let Ok(timeout) = timeout.parse() {
+                Some(Duration::from_secs(timeout))
+            } else {
+                None
+            }
+        });
+
         let inner = Arc::new(DashMap::new());
-        let default = Client::new(default_client_token);
+        let mut default = ClientBuilder::new().token(default_client_token);
+        if let Some(duration) = timeout {
+            default = default.timeout(duration);
+        }
+        let default = default.build();
 
         tokio::spawn(reap_old_clients(inner.clone()));
 
         Self {
             default,
-            max_size,
             inner,
+            max_size,
+            timeout,
         }
     }
 
@@ -104,7 +118,11 @@ impl ClientMap {
                             debug!("Removed oldest entry from HTTP client cache");
                         }
 
-                        let client = Client::new(token.to_string());
+                        let mut client = ClientBuilder::new().token(token.to_string());
+                        if let Some(duration) = self.timeout {
+                            client = client.timeout(duration);
+                        }
+                        let client = client.build();
 
                         if self.max_size.filter(|max| max != &0).is_some() {
                             self.inner
