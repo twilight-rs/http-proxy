@@ -1,4 +1,4 @@
-use http::Method;
+use http::{Method, uri::InvalidUri};
 use hyper::Error as HyperError;
 use std::{
     error::Error,
@@ -13,6 +13,7 @@ pub enum RequestError {
     AcquiringTicket { source: RecvError },
     InvalidMethod { method: Method },
     InvalidPath { source: PathParseError },
+    InvalidURI { source: InvalidUri },
     RequestIssue { source: HyperError },
 }
 
@@ -29,6 +30,10 @@ impl Display for RequestError {
             }
             Self::InvalidPath { source } => {
                 f.write_str("invalid path: ")?;
+                source.fmt(f)
+            }
+            Self::InvalidURI { source } => {
+                f.write_str("generated uri for discord api is invalid: ")?;
                 source.fmt(f)
             }
             Self::RequestIssue { source } => {

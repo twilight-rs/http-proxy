@@ -4,7 +4,6 @@ mod ratelimiter_map;
 use error::RequestError;
 use http::{
     header::{AUTHORIZATION, HOST},
-    uri::{Authority, PathAndQuery, Scheme},
     HeaderValue, Method as HttpMethod, Uri,
 };
 use hyper::{
@@ -202,34 +201,28 @@ async fn handle_request(
     client: Client<HttpsConnector<HttpConnector>, Body>,
     ratelimiter: Ratelimiter,
     token: String,
-    request: Request<Body>,
+    mut request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
-    let mut api_url: String = format!("/api/v{}/", API_VERSION);
+    let api_url: String = format!("/api/v{}/", API_VERSION);
     trace!("Incoming request: {:?}", request);
 
-    let (mut parts, body) = request.into_parts();
+    let request_path = request.uri().path().to_string();
 
-    let request_path = parts.uri.path().to_string();
-
-    let (method, m) = match parts.method {
-        HttpMethod::DELETE => (Method::Delete, "DELETE"),
-        HttpMethod::GET => (Method::Get, "GET"),
-        HttpMethod::PATCH => (Method::Patch, "PATCH"),
-        HttpMethod::POST => (Method::Post, "POST"),
-        HttpMethod::PUT => (Method::Put, "PUT"),
+    let (method, m) = match request.method() {
+        &HttpMethod::DELETE => (Method::Delete, "DELETE"),
+        &HttpMethod::GET => (Method::Get, "GET"),
+        &HttpMethod::PATCH => (Method::Patch, "PATCH"),
+        &HttpMethod::POST => (Method::Post, "POST"),
+        &HttpMethod::PUT => (Method::Put, "PUT"),
         _ => {
-            error!("Unsupported HTTP method in request, {}", parts.method);
+            error!("Unsupported HTTP method in request, {}", request.method());
             return Err(RequestError::InvalidMethod {
-                method: parts.method,
+                method: request.method().to_owned(),
             });
         }
     };
 
-    let trimmed_path = if parts.uri.path().starts_with(&api_url) {
-        parts.uri.path().replace(&api_url, "")
-    } else {
-        parts.uri.path().to_owned()
-    };
+    let trimmed_path = request_path.strip_prefix(&api_url).unwrap_or(&request_path);
 
     let path = match Path::try_from((method, trimmed_path.as_ref())) {
         Ok(path) => path,
@@ -252,28 +245,29 @@ async fn handle_request(
         }
     };
 
-    parts
-        .headers
+    request
+        .headers_mut()
         .insert(AUTHORIZATION, token.try_into().unwrap());
-    parts
-        .headers
+    request
+        .headers_mut()
         .insert(HOST, HeaderValue::from_static("discord.com"));
 
-    api_url.push_str(&trimmed_path);
-
-    let mut uri_parts = parts.uri.into_parts();
-    uri_parts.scheme = Some(Scheme::HTTPS);
-    uri_parts.authority = Some(Authority::from_static("discord.com"));
-    uri_parts.path_and_query = PathAndQuery::from_maybe_shared(api_url).ok();
-    let new_uri = Uri::from_parts(uri_parts).unwrap();
-    parts.uri = new_uri;
-
-    let new_request = Request::from_parts(parts, body);
+    let uri = match Uri::from_str(&format!(
+        "https://discord.com/api/v{}/{}",
+        API_VERSION, trimmed_path
+    )) {
+        Ok(uri) => uri,
+        Err(e) => {
+            error!("Failed to create URI for requesting Discord API: {:?}", e);
+            return Err(RequestError::InvalidURI { source: e });
+        }
+    };
+    *request.uri_mut() = uri;
 
     #[cfg(feature = "expose-metrics")]
     let start = Instant::now();
 
-    let resp = match client.request(new_request).await {
+    let resp = match client.request(request).await {
         Ok(response) => response,
         Err(e) => {
             error!("Error when requesting the Discord API: {:?}", e);
