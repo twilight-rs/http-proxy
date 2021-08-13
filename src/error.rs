@@ -1,4 +1,4 @@
-use http::{Method, uri::InvalidUri};
+use http::{uri::InvalidUri, Method};
 use hyper::Error as HyperError;
 use std::{
     error::Error,
