@@ -99,7 +99,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .headers()
                     .get("authorization")
                     .and_then(|value| value.to_str().ok());
-                let (ratelimiter, token) = ratelimiter_map.get(token);
+                let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
 
                 #[cfg(feature = "expose-metrics")]
                 {
@@ -284,7 +284,6 @@ async fn handle_request(
     let ratelimit_headers = RatelimitHeaders::try_from(resp.headers()).ok();
     if header_sender.send(ratelimit_headers).is_err() {
         error!("Error when sending ratelimit headers to ratelimiter");
-        return Err(RequestError::SendingRatelimitHeaders);
     };
 
     #[cfg(feature = "expose-metrics")]

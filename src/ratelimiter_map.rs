@@ -92,15 +92,14 @@ impl RatelimiterMap {
         })
     }
 
-    pub fn get(&self, token: Option<&str>) -> (Ratelimiter, String) {
+    pub fn get_or_insert(&self, token: Option<&str>) -> (Ratelimiter, String) {
         if let Some(token) = token {
             if token == self.default_token {
                 (self.default.clone(), self.default_token.clone())
             } else {
                 let access_time = Instant::now();
-                let maybe_entry = self.inner.get_mut(token);
 
-                if let Some(mut entry) = maybe_entry {
+                if let Some(mut entry) = self.inner.get_mut(token) {
                     entry.1 = access_time;
                     (entry.0.clone(), token.to_string())
                 } else {
@@ -109,7 +108,11 @@ impl RatelimiterMap {
                         .filter(|max_size| self.inner.len() >= *max_size && max_size > &0)
                         .is_some()
                     {
-                        let key = self.lru().unwrap().key().to_string();
+                        let key = self
+                            .lru()
+                            .expect("Length of inner map is guaranteed to be greater than 0")
+                            .key()
+                            .to_string();
 
                         self.inner.remove(&key);
                         debug!("Removed oldest entry from HTTP ratelimiter cache");
