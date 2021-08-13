@@ -29,7 +29,6 @@ use twilight_http::{
     ratelimiting::{RatelimitHeaders, Ratelimiter},
     request::Method,
     routing::Path,
-    API_VERSION,
 };
 
 #[cfg(feature = "expose-metrics")]
@@ -203,7 +202,6 @@ async fn handle_request(
     token: String,
     mut request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
-    let api_url: String = format!("/api/v{}/", API_VERSION);
     trace!("Incoming request: {:?}", request);
 
     let request_path = request.uri().path().to_string();
@@ -222,7 +220,25 @@ async fn handle_request(
         }
     };
 
-    let trimmed_path = request_path.strip_prefix(&api_url).unwrap_or(&request_path);
+    let (api_path, trimmed_path) = if let Some(trimmed_path) = request_path.strip_prefix("/api") {
+        if let Some(maybe_api_version) = trimmed_path.split('/').nth(1) {
+            if let Some(version_number) = maybe_api_version.strip_prefix("v") {
+                if version_number.parse::<u8>().is_ok() {
+                    // 6 = /api/v
+                    let len = 6 + version_number.len();
+                    (&request_path[..len], &request_path[len..])
+                } else {
+                    ("/api", trimmed_path)
+                }
+            } else {
+                ("/api", trimmed_path)
+            }
+        } else {
+            ("/api", trimmed_path)
+        }
+    } else {
+        ("/api", request_path.as_str())
+    };
 
     let path = match Path::try_from((method, trimmed_path.as_ref())) {
         Ok(path) => path,
@@ -252,10 +268,7 @@ async fn handle_request(
         .headers_mut()
         .insert(HOST, HeaderValue::from_static("discord.com"));
 
-    let uri = match Uri::from_str(&format!(
-        "https://discord.com/api/v{}/{}",
-        API_VERSION, trimmed_path
-    )) {
+    let uri = match Uri::from_str(&format!("https://discord.com{}{}", api_path, trimmed_path)) {
         Ok(uri) => uri,
         Err(e) => {
             error!("Failed to create URI for requesting Discord API: {:?}", e);
