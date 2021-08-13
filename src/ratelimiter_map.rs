@@ -112,7 +112,7 @@ impl RatelimiterMap {
                             .lru()
                             .expect("Length of inner map is guaranteed to be greater than 0")
                             .key()
-                            .to_string();
+                            .clone();
 
                         self.inner.remove(&key);
                         debug!("Removed oldest entry from HTTP ratelimiter cache");

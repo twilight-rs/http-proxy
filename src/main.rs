@@ -196,6 +196,24 @@ fn path_name(path: &Path) -> &'static str {
     }
 }
 
+fn normalize_path(request_path: &str) -> (&str, &str) {
+    if let Some(trimmed_path) = request_path.strip_prefix("/api") {
+        if let Some(maybe_api_version) = trimmed_path.split('/').nth(1) {
+            if let Some(version_number) = maybe_api_version.strip_prefix("v") {
+                if version_number.parse::<u8>().is_ok() {
+                    // 6 = /api/v
+                    let len = 6 + version_number.len();
+                    return (&request_path[..len], &request_path[len..]);
+                };
+            };
+        }
+
+        ("/api", trimmed_path)
+    } else {
+        ("/api", request_path)
+    }
+}
+
 async fn handle_request(
     client: Client<HttpsConnector<HttpConnector>, Body>,
     ratelimiter: Ratelimiter,
@@ -220,25 +238,7 @@ async fn handle_request(
         }
     };
 
-    let (api_path, trimmed_path) = if let Some(trimmed_path) = request_path.strip_prefix("/api") {
-        if let Some(maybe_api_version) = trimmed_path.split('/').nth(1) {
-            if let Some(version_number) = maybe_api_version.strip_prefix("v") {
-                if version_number.parse::<u8>().is_ok() {
-                    // 6 = /api/v
-                    let len = 6 + version_number.len();
-                    (&request_path[..len], &request_path[len..])
-                } else {
-                    ("/api", trimmed_path)
-                }
-            } else {
-                ("/api", trimmed_path)
-            }
-        } else {
-            ("/api", trimmed_path)
-        }
-    } else {
-        ("/api", request_path.as_str())
-    };
+    let (api_path, trimmed_path) = normalize_path(request_path.as_str());
 
     let path = match Path::try_from((method, trimmed_path.as_ref())) {
         Ok(path) => path,
