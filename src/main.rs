@@ -231,7 +231,7 @@ async fn handle_request(
         _ => {
             error!("Unsupported HTTP method in request, {}", request.method());
             return Err(RequestError::InvalidMethod {
-                method: request.method().clone(),
+                method: request.into_parts().0.method,
             });
         }
     };
