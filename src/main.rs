@@ -202,8 +202,7 @@ fn normalize_path(request_path: &str) -> (&str, &str) {
         if let Some(maybe_api_version) = trimmed_path.split('/').nth(1) {
             if let Some(version_number) = maybe_api_version.strip_prefix('v') {
                 if version_number.parse::<u8>().is_ok() {
-                    // 6 = /api/v
-                    let len = 6 + version_number.len();
+                    let len = "/api/v".len() + version_number.len();
                     return (&request_path[..len], &request_path[len..]);
                 };
             };
