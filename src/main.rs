@@ -15,7 +15,7 @@ use hyper::{
 use hyper_rustls::HttpsConnector;
 use ratelimiter_map::RatelimiterMap;
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
@@ -199,7 +199,7 @@ fn path_name(path: &Path) -> &'static str {
 fn normalize_path(request_path: &str) -> (&str, &str) {
     if let Some(trimmed_path) = request_path.strip_prefix("/api") {
         if let Some(maybe_api_version) = trimmed_path.split('/').nth(1) {
-            if let Some(version_number) = maybe_api_version.strip_prefix("v") {
+            if let Some(version_number) = maybe_api_version.strip_prefix('v') {
                 if version_number.parse::<u8>().is_ok() {
                     // 6 = /api/v
                     let len = 6 + version_number.len();
@@ -222,25 +222,25 @@ async fn handle_request(
 ) -> Result<Response<Body>, RequestError> {
     trace!("Incoming request: {:?}", request);
 
-    let request_path = request.uri().path().to_string();
-
-    let (method, m) = match request.method() {
-        &HttpMethod::DELETE => (Method::Delete, "DELETE"),
-        &HttpMethod::GET => (Method::Get, "GET"),
-        &HttpMethod::PATCH => (Method::Patch, "PATCH"),
-        &HttpMethod::POST => (Method::Post, "POST"),
-        &HttpMethod::PUT => (Method::Put, "PUT"),
+    let (method, m) = match *request.method() {
+        HttpMethod::DELETE => (Method::Delete, "DELETE"),
+        HttpMethod::GET => (Method::Get, "GET"),
+        HttpMethod::PATCH => (Method::Patch, "PATCH"),
+        HttpMethod::POST => (Method::Post, "POST"),
+        HttpMethod::PUT => (Method::Put, "PUT"),
         _ => {
             error!("Unsupported HTTP method in request, {}", request.method());
             return Err(RequestError::InvalidMethod {
-                method: request.method().to_owned(),
+                method: request.method().clone(),
             });
         }
     };
 
-    let (api_path, trimmed_path) = normalize_path(request_path.as_str());
+    let request_path = request.uri().path().to_owned();
 
-    let path = match Path::try_from((method, trimmed_path.as_ref())) {
+    let (api_path, trimmed_path) = normalize_path(&request_path);
+
+    let path = match Path::try_from((method, trimmed_path)) {
         Ok(path) => path,
         Err(e) => {
             error!(
@@ -261,9 +261,10 @@ async fn handle_request(
         }
     };
 
-    request
-        .headers_mut()
-        .insert(AUTHORIZATION, token.try_into().unwrap());
+    request.headers_mut().insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&token).expect("token is valid ascii"),
+    );
     request
         .headers_mut()
         .insert(HOST, HeaderValue::from_static("discord.com"));
