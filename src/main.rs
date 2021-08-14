@@ -86,6 +86,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let service = service::make_service_fn(move |addr: &AddrStream| {
         trace!("Connection from: {:?}", addr);
         let ratelimiter_map = ratelimiter_map.clone();
+        // Cloning a hyper client is fairly cheap by design
         let client = client.clone();
 
         #[cfg(feature = "expose-metrics")]
@@ -263,7 +264,8 @@ async fn handle_request(
 
     request.headers_mut().insert(
         AUTHORIZATION,
-        HeaderValue::from_str(&token).expect("token is valid ascii"),
+        HeaderValue::from_bytes(token.as_bytes())
+            .expect("strings are guaranteed to be valid utf-8"),
     );
     request
         .headers_mut()
