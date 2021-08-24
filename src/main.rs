@@ -4,6 +4,7 @@ mod ratelimiter_map;
 use error::RequestError;
 use http::{
     header::{AUTHORIZATION, HOST},
+    uri::PathAndQuery,
     HeaderValue, Method as HttpMethod, Uri,
 };
 use hyper::{
@@ -236,7 +237,13 @@ async fn handle_request(
         }
     };
 
-    let request_path = request.uri().path().to_owned();
+    let uri = request.uri();
+
+    let request_path = uri
+        .path_and_query()
+        .map(PathAndQuery::as_str)
+        .unwrap_or_else(|| uri.path())
+        .to_owned();
 
     let (api_path, trimmed_path) = normalize_path(&request_path);
 
