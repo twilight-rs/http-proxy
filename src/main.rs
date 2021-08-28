@@ -270,7 +270,13 @@ async fn handle_request(
         .headers_mut()
         .insert(HOST, HeaderValue::from_static("discord.com"));
 
-    let uri = match Uri::from_str(&format!("https://discord.com{}{}", api_path, trimmed_path)) {
+    let mut uri_string = format!("https://discord.com{}{}", api_path, trimmed_path);
+    if let Some(query) = request.uri().query() {
+        uri_string.push('?');
+        uri_string.push_str(query);
+    }
+
+    let uri = match Uri::from_str(&uri_string) {
         Ok(uri) => uri,
         Err(e) => {
             error!("Failed to create URI for requesting Discord API: {:?}", e);
