@@ -271,6 +271,7 @@ async fn handle_request(
         .insert(HOST, HeaderValue::from_static("discord.com"));
 
     let mut uri_string = format!("https://discord.com{}{}", api_path, trimmed_path);
+
     if let Some(query) = request.uri().query() {
         uri_string.push('?');
         uri_string.push_str(query);
