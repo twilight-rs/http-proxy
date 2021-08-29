@@ -23,8 +23,7 @@ use std::{
     sync::Arc,
 };
 use tracing::{debug, error, info, trace};
-use tracing_log::LogTracer;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::EnvFilter;
 use twilight_http::{
     ratelimiting::{RatelimitHeaders, Ratelimiter},
     request::Method,
@@ -49,17 +48,11 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    LogTracer::init()?;
-
-    let log_filter_layer =
-        EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info"))?;
-    let log_fmt_layer = fmt::layer();
-
-    let log_subscriber = tracing_subscriber::registry()
-        .with(log_filter_layer)
-        .with(log_fmt_layer);
-
-    tracing::subscriber::set_global_default(log_subscriber)?;
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
     let host_raw = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let host = IpAddr::from_str(&host_raw)?;
