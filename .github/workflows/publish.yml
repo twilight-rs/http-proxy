@@ -28,6 +28,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Convert GITHUB_REPOSITORY into lowercase
+        run: |
+          echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
       - name: Build for x86_64
         run: |
             docker build -t http-proxy:amd64 .
@@ -59,17 +62,17 @@ jobs:
             docker manifest create ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metrics ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metricsamd64 ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metricsarmv8
             docker manifest push ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metrics
 
-            docker tag http-proxy:amd64 ghcr.io/${{ github.repository }}:amd64
-            docker tag http-proxy:armv8 ghcr.io/${{ github.repository }}:armv8
-            docker tag http-proxy:metricsamd64 ghcr.io/${{ github.repository }}:metricsamd64
-            docker tag http-proxy:metricsarmv8 ghcr.io/${{ github.repository }}:metricsarmv8
-            docker push ghcr.io/${{ github.repository }}:amd64
-            docker push ghcr.io/${{ github.repository }}:armv8
-            docker push ghcr.io/${{ github.repository }}:metricsamd64
-            docker push ghcr.io/${{ github.repository }}:metricsarmv8
-            docker manifest create ghcr.io/${{ github.repository }}:latest ghcr.io/${{ github.repository }}:amd64 ghcr.io/${{ github.repository }}:armv8
-            docker manifest push ghcr.io/${{ github.repository }}:latest
-            docker manifest create ghcr.io/${{ github.repository }}:v8 ghcr.io/${{ github.repository }}:amd64 ghcr.io/${{ github.repository }}:armv8
-            docker manifest push ghcr.io/${{ github.repository }}:v8
-            docker manifest create ghcr.io/${{ github.repository }}:metrics ghcr.io/${{ github.repository }}:metricsamd64 ghcr.io/${{ github.repository }}:metricsarmv8
-            docker manifest push ghcr.io/${{ github.repository }}:metrics
+            docker tag http-proxy:amd64 ghcr.io/${REPO}:amd64
+            docker tag http-proxy:armv8 ghcr.io/${REPO}:armv8
+            docker tag http-proxy:metricsamd64 ghcr.io/${REPO}:metricsamd64
+            docker tag http-proxy:metricsarmv8 ghcr.io/${REPO}:metricsarmv8
+            docker push ghcr.io/${REPO}:amd64
+            docker push ghcr.io/${REPO}:armv8
+            docker push ghcr.io/${REPO}:metricsamd64
+            docker push ghcr.io/${REPO}:metricsarmv8
+            docker manifest create ghcr.io/${REPO}:latest ghcr.io/${REPO}:amd64 ghcr.io/${REPO}:armv8
+            docker manifest push ghcr.io/${REPO}:latest
+            docker manifest create ghcr.io/${REPO}:v8 ghcr.io/${REPO}:amd64 ghcr.io/${REPO}:armv8
+            docker manifest push ghcr.io/${REPO}:v8
+            docker manifest create ghcr.io/${REPO}:metrics ghcr.io/${REPO}:metricsamd64 ghcr.io/${REPO}:metricsarmv8
+            docker manifest push ghcr.io/${REPO}:metrics
