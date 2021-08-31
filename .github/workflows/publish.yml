@@ -22,6 +22,12 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      - name: Login to ghcr
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build for x86_64
         run: |
             docker build -t http-proxy:amd64 .
@@ -52,3 +58,18 @@ jobs:
             docker manifest push ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:v8
             docker manifest create ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metrics ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metricsamd64 ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metricsarmv8
             docker manifest push ${{ secrets.DOCKERHUB_TARGET }}/http-proxy:metrics
+
+            docker tag http-proxy:amd64 ghcr.io/${{ github.repository }}:amd64
+            docker tag http-proxy:armv8 ghcr.io/${{ github.repository }}:armv8
+            docker tag http-proxy:metricsamd64 ghcr.io/${{ github.repository }}:metricsamd64
+            docker tag http-proxy:metricsarmv8 ghcr.io/${{ github.repository }}:metricsarmv8
+            docker push ghcr.io/${{ github.repository }}:amd64
+            docker push ghcr.io/${{ github.repository }}:armv8
+            docker push ghcr.io/${{ github.repository }}:metricsamd64
+            docker push ghcr.io/${{ github.repository }}:metricsarmv8
+            docker manifest create ghcr.io/${{ github.repository }}:latest ghcr.io/${{ github.repository }}:amd64 ghcr.io/${{ github.repository }}:armv8
+            docker manifest push ghcr.io/${{ github.repository }}:latest
+            docker manifest create ghcr.io/${{ github.repository }}:v8 ghcr.io/${{ github.repository }}:amd64 ghcr.io/${{ github.repository }}:armv8
+            docker manifest push ghcr.io/${{ github.repository }}:v8
+            docker manifest create ghcr.io/${{ github.repository }}:metrics ghcr.io/${{ github.repository }}:metricsamd64 ghcr.io/${{ github.repository }}:metricsarmv8
+            docker manifest push ghcr.io/${{ github.repository }}:metrics
