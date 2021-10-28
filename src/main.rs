@@ -3,7 +3,7 @@ mod ratelimiter_map;
 
 use error::RequestError;
 use http::{
-    header::{AUTHORIZATION, HOST},
+    header::{AUTHORIZATION, CONNECTION, HOST, TRANSFER_ENCODING, UPGRADE},
     HeaderValue, Method as HttpMethod, Uri,
 };
 use hyper::{
@@ -285,6 +285,14 @@ async fn handle_request(
     request
         .headers_mut()
         .insert(HOST, HeaderValue::from_static("discord.com"));
+
+    // Remove forbidden HTTP/2 headers
+    // https://datatracker.ietf.org/doc/html/rfc7540#section-8.1.2.2
+    request.headers_mut().remove(CONNECTION);
+    request.headers_mut().remove("keep-alive");
+    request.headers_mut().remove("proxy-connection");
+    request.headers_mut().remove(TRANSFER_ENCODING);
+    request.headers_mut().remove(UPGRADE);
 
     let mut uri_string = format!("https://discord.com{}{}", api_path, trimmed_path);
 
