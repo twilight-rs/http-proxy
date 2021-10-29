@@ -313,7 +313,13 @@ async fn handle_request(
         }
     };
 
-    let ratelimit_headers = RatelimitHeaders::try_from(resp.headers()).ok();
+    let ratelimit_headers = RatelimitHeaders::from_pairs(
+        resp.headers()
+            .into_iter()
+            .map(|(k, v)| (k.as_str(), v.as_bytes())),
+    )
+    .ok();
+
     if header_sender.send(ratelimit_headers).is_err() {
         error!("Error when sending ratelimit headers to ratelimiter");
     };
