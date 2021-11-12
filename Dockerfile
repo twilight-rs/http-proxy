@@ -9,10 +9,9 @@ FROM alpine:latest as build
 ARG RUST_TARGET
 ARG MUSL_TARGET
 ARG FEATURES
-ENV RUSTFLAGS "-Zgcc-ld=lld"
 
 RUN apk upgrade && \
-    apk add curl gcc lld musl-dev && \
+    apk add curl gcc musl-dev && \
     curl -sSf https://sh.rustup.rs | sh -s -- --profile minimal --default-toolchain nightly -y
 
 RUN source $HOME/.cargo/env && \
@@ -24,7 +23,7 @@ RUN source $HOME/.cargo/env && \
         ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-ld" "/usr/bin/$MUSL_TARGET-ld" && \
         ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-strip" "/usr/bin/actual-strip" && \
         mkdir -p /app/.cargo && \
-        echo -e "[target.$RUST_TARGET]\nlinker = \"$MUSL_TARGET-gcc\"" > /app/.cargo/config; \
+        echo -e "[target.$RUST_TARGET]\nlinker = \"$MUSL_TARGET-gcc\"\nrustflags = \"-Zgcc-ld=lld\"" > /app/.cargo/config; \
     else \
         echo "skipping toolchain as we are native" && \
         ln -s /usr/bin/strip /usr/bin/actual-strip; \
