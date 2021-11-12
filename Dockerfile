@@ -9,9 +9,10 @@ FROM alpine:latest as build
 ARG RUST_TARGET
 ARG MUSL_TARGET
 ARG FEATURES
+ENV RUSTFLAGS "-Zgcc-ld=lld"
 
 RUN apk upgrade && \
-    apk add curl gcc musl-dev && \
+    apk add curl gcc lld musl-dev && \
     curl -sSf https://sh.rustup.rs | sh -s -- --profile minimal --default-toolchain nightly -y
 
 RUN source $HOME/.cargo/env && \
