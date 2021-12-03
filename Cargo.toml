@@ -5,18 +5,19 @@ name = "twilight-http-proxy"
 version = "0.1.0"
 
 [dependencies]
-dashmap = "4.0"
+dashmap = "5.0"
 http = "0.2"
 hyper = { version = "0.14", features = ["tcp", "server", "client", "http1", "http2"] }
-hyper-rustls = { version = "0.22", default-features = false, features = ["webpki-tokio"] }
+hyper-rustls = { version = "0.23", default-features = false, features = ["webpki-tokio", "http1", "http2"] }
+hyper-trust-dns = { version = "0.3", default-features = false }
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-twilight-http = { version = "0.7", default-features = false, features = ["rustls-webpki-roots"] }
+twilight-http-ratelimiting = "0.8"
 
 # Only used by the `expose-metrics` feature.
 metrics = { version = "0.17", optional = true }
-metrics-exporter-prometheus = { version = "0.6", default-features = false, optional = true }
+metrics-exporter-prometheus = { version = "0.7", default-features = false, optional = true }
 lazy_static = { version = "1.4", optional = true }
 
 [features]

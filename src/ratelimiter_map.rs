@@ -2,13 +2,13 @@ use dashmap::{mapref::multiple::RefMulti, DashMap};
 use std::{env, str::FromStr, sync::Arc};
 use tokio::time::{interval, Duration, Instant};
 use tracing::{debug, warn};
-use twilight_http::ratelimiting::Ratelimiter;
+use twilight_http_ratelimiting::InMemoryRatelimiter;
 
 pub struct RatelimiterMap {
-    default: Ratelimiter,
+    default: InMemoryRatelimiter,
     default_token: String,
     max_size: Option<usize>,
-    inner: Arc<DashMap<String, (Ratelimiter, Instant)>>,
+    inner: Arc<DashMap<String, (InMemoryRatelimiter, Instant)>>,
 }
 
 fn parse_env<T: FromStr>(key: &str) -> Option<T> {
@@ -28,7 +28,7 @@ fn parse_env<T: FromStr>(key: &str) -> Option<T> {
     })
 }
 
-async fn reap_old_ratelimiters(map: Arc<DashMap<String, (Ratelimiter, Instant)>>) {
+async fn reap_old_ratelimiters(map: Arc<DashMap<String, (InMemoryRatelimiter, Instant)>>) {
     let client_reap_interval =
         Duration::from_secs(parse_env("CLIENT_REAP_INTERVAL").unwrap_or(600));
 
@@ -61,7 +61,7 @@ impl RatelimiterMap {
         let max_size = parse_env("CLIENT_CACHE_MAX_SIZE");
 
         let inner = Arc::new(DashMap::new());
-        let default = Ratelimiter::new();
+        let default = InMemoryRatelimiter::new();
 
         tokio::spawn(reap_old_ratelimiters(inner.clone()));
 
@@ -73,7 +73,7 @@ impl RatelimiterMap {
         }
     }
 
-    fn lru(&self) -> Option<RefMulti<String, (Ratelimiter, Instant)>> {
+    fn lru(&self) -> Option<RefMulti<String, (InMemoryRatelimiter, Instant)>> {
         self.inner.iter().next().map(|first_entry| {
             self.inner.iter().fold(
                 first_entry,
@@ -88,7 +88,7 @@ impl RatelimiterMap {
         })
     }
 
-    pub fn get_or_insert(&self, token: Option<&str>) -> (Ratelimiter, String) {
+    pub fn get_or_insert(&self, token: Option<&str>) -> (InMemoryRatelimiter, String) {
         if let Some(token) = token {
             if token == self.default_token {
                 (self.default.clone(), self.default_token.clone())
@@ -114,7 +114,7 @@ impl RatelimiterMap {
                         debug!("Removed oldest entry from HTTP ratelimiter cache");
                     }
 
-                    let ratelimiter = Ratelimiter::new();
+                    let ratelimiter = InMemoryRatelimiter::new();
 
                     if self.max_size.filter(|max| max != &0).is_some() {
                         self.inner

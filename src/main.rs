@@ -8,11 +8,11 @@ use http::{
 };
 use hyper::{
     body::Body,
-    client::HttpConnector,
     server::{conn::AddrStream, Server},
     service, Client, Request, Response,
 };
-use hyper_rustls::HttpsConnector;
+use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+use hyper_trust_dns::{new_trust_dns_http_connector, TrustDnsHttpConnector};
 use ratelimiter_map::RatelimiterMap;
 use std::{
     convert::TryFrom,
@@ -24,10 +24,8 @@ use std::{
 };
 use tracing::{debug, error, info, trace};
 use tracing_subscriber::EnvFilter;
-use twilight_http::{
-    ratelimiting::{RatelimitHeaders, Ratelimiter},
-    request::Method,
-    routing::Path,
+use twilight_http_ratelimiting::{
+    InMemoryRatelimiter, Method, Path, RatelimitHeaders, Ratelimiter,
 };
 
 #[cfg(unix)]
@@ -61,7 +59,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let host = IpAddr::from_str(&host_raw)?;
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
-    let client: Client<_, Body> = Client::builder().build(HttpsConnector::with_webpki_roots());
+    let https_connector = {
+        let mut http_connector = new_trust_dns_http_connector();
+        http_connector.enforce_http(false);
+
+        let builder = HttpsConnectorBuilder::new()
+            .with_webpki_roots()
+            .https_only()
+            .enable_http1();
+
+        if env::var("DISABLE_HTTP2").is_ok() {
+            builder.wrap_connector(http_connector)
+        } else {
+            builder.enable_http2().wrap_connector(http_connector)
+        }
+    };
+
+    let client: Client<_, Body> = Client::builder().build(https_connector);
     let ratelimiter_map = Arc::new(RatelimiterMap::new(env::var("DISCORD_TOKEN")?));
 
     let address = SocketAddr::from((host, port));
@@ -209,6 +223,15 @@ fn path_name(path: &Path) -> &'static str {
         Path::ApplicationGuildCommandId(..) => "Application command in guild",
         Path::InteractionCallback(..) => "Interaction callback",
         Path::StageInstances => "Stage instances",
+        Path::ChannelsIdMessagesIdThreads(_) => "Threads of a specific message",
+        Path::ChannelsIdThreadMembers(_) => "Thread members",
+        Path::ChannelsIdThreads(_) => "Channel threads",
+        Path::GuildsIdStickers(_) => "Guild stickers",
+        Path::GuildsTemplatesCode(_) => "Specific guild template",
+        Path::GuildsIdThreads(_) => "Guild threads",
+        Path::StickerPacks => "Sticker packs",
+        Path::Stickers => "Stickers",
+        Path::WebhooksIdToken(_, _) => "Webhook",
         _ => "Unknown path!",
     }
 }
@@ -231,8 +254,8 @@ fn normalize_path(request_path: &str) -> (&str, &str) {
 }
 
 async fn handle_request(
-    client: Client<HttpsConnector<HttpConnector>, Body>,
-    ratelimiter: Ratelimiter,
+    client: Client<HttpsConnector<TrustDnsHttpConnector>, Body>,
+    ratelimiter: InMemoryRatelimiter,
     token: String,
     mut request: Request<Body>,
 ) -> Result<Response<Body>, RequestError> {
@@ -269,7 +292,7 @@ async fn handle_request(
 
     let p = path_name(&path);
 
-    let header_sender = match ratelimiter.ticket(path).await {
+    let header_sender = match ratelimiter.wait_for_ticket(path).await {
         Ok(sender) => sender,
         Err(e) => {
             error!("Failed to receive ticket for ratelimiting: {:?}", e);
@@ -328,7 +351,7 @@ async fn handle_request(
     )
     .ok();
 
-    if header_sender.send(ratelimit_headers).is_err() {
+    if header_sender.headers(ratelimit_headers).is_err() {
         error!("Error when sending ratelimit headers to ratelimiter");
     };
 
