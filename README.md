@@ -66,7 +66,7 @@ You can configure the behaviour when using multiple tokens with these enviroment
 * `CLIENT_CACHE_MAX_SIZE` (defaults to no limit) limits the amount of HTTP clients in the cache - if full, the least recently used client will be removed
 * `CLIENT_REAP_INTERVAL` (in seconds; defaults to 10 minutes) changes the interval at which clients will be checked for decay
 
-HTTP2 may cause issues with high concurrency (i.e. many concurrent requests). If you encounter frequent error logs related to this, force the use of HTTP1 by setting `DISABLE_HTTP2=1` when running the proxy.
+HTTP2 may cause issues with high concurrency (i.e. many concurrent requests). If you encounter frequent error logs related to this, force the use of HTTP1 by setting `DISABLE_HTTP2` to any value when running the proxy.
 
 ## Grafana metrics
 The http proxy can expose grafana metrics when compiled with the ``expose-metrics`` feature. These metrics are then available on the ``/metrics`` endpoint.
