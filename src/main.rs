@@ -362,12 +362,15 @@ async fn handle_request(
 
     let status = resp.status();
     #[cfg(feature = "expose-metrics")]
-        {
-            let scope = resp.headers().get("X-RateLimit-Scope")
-                .map(|header| header.to_str().unwrap_or("")).unwrap_or("")
-                .to_string();
-            histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope);
-        }
+    {
+        let scope = resp
+            .headers()
+            .get("X-RateLimit-Scope")
+            .map(|header| header.to_str().unwrap_or(""))
+            .unwrap_or("")
+            .to_string();
+        histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope);
+    }
 
     debug!("{} {} ({}): {}", m, p, request_path, status);
 
