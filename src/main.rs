@@ -15,7 +15,7 @@ use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use hyper_trust_dns::{new_trust_dns_http_connector, TrustDnsHttpConnector};
 use ratelimiter_map::RatelimiterMap;
 use std::{
-    convert::TryFrom,
+    convert::{Infallible, TryFrom},
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
@@ -32,7 +32,7 @@ use twilight_http_ratelimiting::{
 use tokio::signal::unix::{signal, SignalKind};
 
 #[cfg(feature = "expose-metrics")]
-use std::{future::Future, pin::Pin, time::Instant};
+use std::time::Instant;
 
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
@@ -103,27 +103,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let handle = handle.clone();
 
         async move {
-            Ok::<_, RequestError>(service::service_fn(move |incoming: Request<Body>| {
+            Ok::<_, Infallible>(service::service_fn(move |incoming: Request<Body>| {
                 let token = incoming
                     .headers()
                     .get("authorization")
                     .and_then(|value| value.to_str().ok());
                 let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
+                let client = client.clone();
 
                 #[cfg(feature = "expose-metrics")]
                 {
-                    let uri = incoming.uri();
+                    let handle = handle.clone();
 
-                    if uri.path() == "/metrics" {
-                        handle_metrics(handle.clone())
-                    } else {
-                        Box::pin(handle_request(client.clone(), ratelimiter, token, incoming))
+                    async move {
+                        Ok::<_, Infallible>({
+                            if incoming.uri().path() == "/metrics" {
+                                handle_metrics(handle)
+                            } else {
+                                handle_request(client, ratelimiter, token, incoming)
+                                    .await
+                                    .unwrap_or_else(|err| err.as_response())
+                            }
+                        })
                     }
                 }
 
                 #[cfg(not(feature = "expose-metrics"))]
                 {
-                    handle_request(client.clone(), ratelimiter, token, incoming)
+                    async move {
+                        Ok::<_, Infallible>(
+                            handle_request(client, ratelimiter, token, incoming)
+                                .await
+                                .unwrap_or_else(|err| err.as_response()),
+                        )
+                    }
                 }
             }))
         }
@@ -370,12 +383,8 @@ async fn handle_request(
 }
 
 #[cfg(feature = "expose-metrics")]
-fn handle_metrics(
-    handle: Arc<PrometheusHandle>,
-) -> Pin<Box<dyn Future<Output = Result<Response<Body>, RequestError>> + Send>> {
-    Box::pin(async move {
-        Ok(Response::builder()
-            .body(Body::from(handle.render()))
-            .unwrap())
-    })
+fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<Body> {
+    Response::builder()
+        .body(Body::from(handle.render()))
+        .unwrap()
 }

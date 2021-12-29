@@ -1,5 +1,5 @@
-use http::{uri::InvalidUri, Method};
-use hyper::Error as HyperError;
+use http::{uri::InvalidUri, Method, Response};
+use hyper::{Body, Error as HyperError};
 use std::{
     error::Error,
     fmt::{Display, Formatter, Result as FmtResult},
@@ -24,6 +24,21 @@ pub enum RequestError {
     RequestIssue {
         source: HyperError,
     },
+}
+
+impl RequestError {
+    pub fn as_response(&self) -> Response<Body> {
+        let status_code = match self {
+            RequestError::AcquiringTicket { .. } | RequestError::InvalidURI { .. } => 500,
+            RequestError::InvalidMethod { .. } | RequestError::InvalidPath { .. } => 501,
+            RequestError::RequestIssue { .. } => 502,
+        };
+
+        Response::builder()
+            .status(status_code)
+            .body(Body::empty())
+            .unwrap()
+    }
 }
 
 impl Display for RequestError {
