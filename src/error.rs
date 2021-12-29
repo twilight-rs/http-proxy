@@ -4,17 +4,26 @@ use std::{
     error::Error,
     fmt::{Display, Formatter, Result as FmtResult},
 };
-use tokio::sync::oneshot::error::RecvError;
-use twilight_http::routing::PathParseError;
+use twilight_http_ratelimiting::request::PathParseError;
 
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 pub enum RequestError {
-    AcquiringTicket { source: RecvError },
-    InvalidMethod { method: Method },
-    InvalidPath { source: PathParseError },
-    InvalidURI { source: InvalidUri },
-    RequestIssue { source: HyperError },
+    AcquiringTicket {
+        source: Box<dyn Error + Send + Sync>,
+    },
+    InvalidMethod {
+        method: Method,
+    },
+    InvalidPath {
+        source: PathParseError,
+    },
+    InvalidURI {
+        source: InvalidUri,
+    },
+    RequestIssue {
+        source: HyperError,
+    },
 }
 
 impl Display for RequestError {
