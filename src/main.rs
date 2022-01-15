@@ -85,7 +85,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "expose-metrics")]
     {
-        let recorder = PrometheusBuilder::new().build();
+        let recorder = PrometheusBuilder::new().build_recorder();
         handle = Arc::new(recorder.handle());
         metrics::set_boxed_recorder(Box::new(recorder))
             .expect("Failed to create metrics receiver!");
