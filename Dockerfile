@@ -24,10 +24,22 @@ RUN source $HOME/.cargo/env && \
         ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-ld" "/usr/bin/$MUSL_TARGET-ld" && \
         ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-strip" "/usr/bin/actual-strip" && \
         GCC_VERSION=$($MUSL_TARGET-gcc --version | grep gcc | awk '{print $3}') && \
-        echo -e "[build]\nrustflags = [\"-L\", \"native=/$MUSL_TARGET-cross/$MUSL_TARGET/lib\", \"-L\", \"native=/$MUSL_TARGET-cross/lib/gcc/$MUSL_TARGET/$GCC_VERSION/\", \"-l\", \"static=gcc\", \"-Z\", \"gcc-ld=lld\"]\n[target.$RUST_TARGET]\nlinker = \"$MUSL_TARGET-gcc\"\n[unstable]\nbuild-std = [\"std\", \"panic_abort\"]\n" > /app/.cargo/config; \
+        echo -e "\
+[build]\n\
+rustflags = [\"-L\", \"native=/$MUSL_TARGET-cross/$MUSL_TARGET/lib\", \"-L\", \"native=/$MUSL_TARGET-cross/lib/gcc/$MUSL_TARGET/$GCC_VERSION/\", \"-l\", \"static=gcc\", \"-Z\", \"gcc-ld=lld\"]\n\
+[target.$RUST_TARGET]\n\
+linker = \"$MUSL_TARGET-gcc\"\n\
+[unstable]\n\
+build-std = [\"std\", \"panic_abort\"]\n\
+" > /app/.cargo/config; \
     else \
         echo "skipping toolchain as we are native" && \
-        echo -e "[build]\nrustflags = [\"-L\", \"native=/usr/lib\"]\n[unstable]\nbuild-std = [\"std\", \"panic_abort\"]\n" > /app/.cargo/config && \
+        echo -e "\
+[build]\n\
+rustflags = [\"-L\", \"native=/usr/lib\"]\n\
+[unstable]\n\
+build-std = [\"std\", \"panic_abort\"]\n\
+" > /app/.cargo/config && \
         ln -s /usr/bin/strip /usr/bin/actual-strip; \
     fi
 
