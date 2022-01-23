@@ -12,9 +12,10 @@ ARG FEATURES
 
 RUN apk upgrade && \
     apk add curl gcc musl-dev && \
-    curl -sSf https://sh.rustup.rs | sh -s -- --profile minimal --default-toolchain nightly -y
+    curl -sSf https://sh.rustup.rs | sh -s -- --profile minimal --default-toolchain nightly --component rust-src -y
 
 RUN source $HOME/.cargo/env && \
+    mkdir -p /app/.cargo && \
     if [ "$RUST_TARGET" != $(rustup target list --installed) ]; then \
         rustup target add $RUST_TARGET && \
         curl -L "https://musl.cc/$MUSL_TARGET-cross.tgz" -o /toolchain.tgz && \
@@ -22,10 +23,23 @@ RUN source $HOME/.cargo/env && \
         ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-gcc" "/usr/bin/$MUSL_TARGET-gcc" && \
         ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-ld" "/usr/bin/$MUSL_TARGET-ld" && \
         ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-strip" "/usr/bin/actual-strip" && \
-        mkdir -p /app/.cargo && \
-        echo -e "[target.$RUST_TARGET]\nlinker = \"$MUSL_TARGET-gcc\"\nrustflags = \"-Zgcc-ld=lld\"" > /app/.cargo/config; \
+        GCC_VERSION=$($MUSL_TARGET-gcc --version | grep gcc | awk '{print $3}') && \
+        echo -e "\
+[build]\n\
+rustflags = [\"-L\", \"native=/$MUSL_TARGET-cross/$MUSL_TARGET/lib\", \"-L\", \"native=/$MUSL_TARGET-cross/lib/gcc/$MUSL_TARGET/$GCC_VERSION/\", \"-l\", \"static=gcc\", \"-Z\", \"gcc-ld=lld\"]\n\
+[target.$RUST_TARGET]\n\
+linker = \"$MUSL_TARGET-gcc\"\n\
+[unstable]\n\
+build-std = [\"std\", \"panic_abort\"]\n\
+" > /app/.cargo/config; \
     else \
         echo "skipping toolchain as we are native" && \
+        echo -e "\
+[build]\n\
+rustflags = [\"-L\", \"native=/usr/lib\"]\n\
+[unstable]\n\
+build-std = [\"std\", \"panic_abort\"]\n\
+" > /app/.cargo/config && \
         ln -s /usr/bin/strip /usr/bin/actual-strip; \
     fi
 
