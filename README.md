@@ -3,23 +3,19 @@
 `http-proxy` is a ratelimited HTTP proxy in front of the Discord API, making use
 of [twilight].
 
-## Using it
+## Use
 
-This proxy is not a "real" HTTP `CONNECT` TCP proxy, instead it mocks to be the
+This proxy is not a "real" HTTP `CONNECT` TCP proxy, it instead mocks the
 Discord API.
 
-In order to use it, change the base URL of all your routes from
-`https://discord.com/api/v9` to `http://localhost:3000/api/v9`. The proxy
-actively supports routes from API v9, but will also try to request the
-corresponding routes on older API versions if you so request in the URL.
-
-A very naive example of using the proxy with cURL would look like this:
+Using it is as easy as changing the base of all routes from `discord.com` to
+`localhost:3000`, like so:
 
 ```bash
 # Previously
-$ curl https://discord.com/api/v9/users/@me
+$ curl https://discord.com/api/users/@me
 # With the proxy
-$ curl http://localhost:3000/api/v9/users/@me
+$ curl http://localhost:3000/api/users/@me
 
 # Or other API versions
 $ curl http://localhost:3000/users/@me
@@ -27,9 +23,12 @@ $ curl http://localhost:3000/api/users/@me
 $ curl http://localhost:3000/api/v8/users/@me
 ```
 
+The proxy actively supports routes from API v9, but will also try to request
+the corresponding routes on older or newer API versions if you so request in
+the URL.
+
 `twilight_http` natively supports using `twilight_http_proxy`, so you can use
-it like
-this:
+it like this:
 
 ```rust
 use twilight_http::Client;
@@ -81,8 +80,7 @@ Prebuilt Docker images are published on [Docker Hub].
 ```sh
 $ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy
 # Or with metrics enabled
-$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80
-twilightrs/http-proxy:metrics
+$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy:metrics
 ```
 
 This will set the discord token to `"my token"` and map the bound port to port
