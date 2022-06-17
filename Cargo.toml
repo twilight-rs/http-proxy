@@ -5,7 +5,7 @@ name = "twilight-http-proxy"
 version = "0.1.0"
 
 [dependencies]
-dashmap = "5.0"
+dashmap = "5.1"
 http = "0.2"
 hyper = { version = "0.14", features = ["tcp", "server", "client", "http1", "http2"] }
 hyper-rustls = { version = "0.23", default-features = false, features = ["webpki-tokio", "http1", "http2"] }
