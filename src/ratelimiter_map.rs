@@ -116,7 +116,7 @@ impl RatelimiterMap {
 
                     let ratelimiter = InMemoryRatelimiter::new();
 
-                    if self.max_size.filter(|max| max != &0).is_some() {
+                    if self.max_size.is_none() || self.max_size.filter(|max| max != &0).is_some() {
                         self.inner
                             .insert(token.to_string(), (ratelimiter.clone(), access_time));
                     }
