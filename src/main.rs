@@ -12,7 +12,7 @@ use hyper::{
     service, Client, Request, Response,
 };
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use hyper_trust_dns::{new_trust_dns_http_connector, TrustDnsHttpConnector};
+use hyper_trust_dns::{TrustDnsHttpConnector, TrustDnsResolver};
 use ratelimiter_map::RatelimiterMap;
 use std::{
     convert::{Infallible, TryFrom},
@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
     let https_connector = {
-        let mut http_connector = new_trust_dns_http_connector();
+        let mut http_connector = TrustDnsResolver::default().into_http_connector();
         http_connector.enforce_http(false);
 
         let builder = HttpsConnectorBuilder::new()
