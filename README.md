@@ -96,7 +96,7 @@ Build the binary:
 
 ```sh
 $ cargo build --release
-$ DISCORD_TOKEN="my token" PORT=3000 ./target/release/twilight_http_proxy
+$ DISCORD_TOKEN="my token" PORT=3000 ./target/release/twilight-http-proxy
 ```
 
 This will set the discord token to `"my token"` and bind to port 3000.
