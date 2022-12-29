@@ -22,7 +22,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::EnvFilter;
 use twilight_http_ratelimiting::{
     InMemoryRatelimiter, Method, Path, RatelimitHeaders, Ratelimiter,
@@ -89,10 +89,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "expose-metrics")]
     {
+        let timeout = parse_env("METRIC_TIMEOUT").unwrap_or(300);
         let recorder = PrometheusBuilder::new()
             .idle_timeout(
                 MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM,
-                Some(Duration::from_secs(120)),
+                Some(Duration::from_secs(timeout)),
             )
             .build_recorder();
         handle = Arc::new(recorder.handle());
@@ -408,4 +409,21 @@ fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<Body> {
     Response::builder()
         .body(Body::from(handle.render()))
         .unwrap()
+}
+
+pub fn parse_env<T: FromStr>(key: &str) -> Option<T> {
+    env::var_os(key).and_then(|value| match value.into_string() {
+        Ok(s) => {
+            if let Ok(t) = s.parse() {
+                Some(t)
+            } else {
+                warn!("Unable to parse {}, proceeding with defaults", key);
+                None
+            }
+        }
+        Err(s) => {
+            warn!("{} is not UTF-8: {:?}", key, s);
+            None
+        }
+    })
 }

@@ -72,6 +72,8 @@ enviroment variables:
   ratelimiting information will be removed
 - `CLIENT_REAP_INTERVAL` (in seconds; defaults to 10 minutes) changes the
   interval at which ratelimiting information will be checked for decay
+- `METRIC_TIMEOUT` (in seconds; defaults to 5 minutes) controls how long
+  metrics will continue to be reported past their last usage.
 
 ### Running via Docker
 
