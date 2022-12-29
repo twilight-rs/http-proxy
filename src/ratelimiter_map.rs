@@ -1,7 +1,5 @@
-use dashmap::{mapref::multiple::RefMulti, DashMap};
-use std::sync::Arc;
-use tokio::time::{interval, Duration, Instant};
-use tracing::debug;
+use crate::expiring_lru::{Builder, ExpiringLru};
+use tokio::time::Duration;
 use twilight_http_ratelimiting::InMemoryRatelimiter;
 
 use crate::parse_env;
@@ -9,27 +7,7 @@ use crate::parse_env;
 pub struct RatelimiterMap {
     default: InMemoryRatelimiter,
     default_token: String,
-    max_size: Option<usize>,
-    inner: Arc<DashMap<String, (InMemoryRatelimiter, Instant)>>,
-}
-
-async fn reap_old_ratelimiters(map: Arc<DashMap<String, (InMemoryRatelimiter, Instant)>>) {
-    let client_reap_interval =
-        Duration::from_secs(parse_env("CLIENT_REAP_INTERVAL").unwrap_or(600));
-
-    let client_decay_timeout =
-        Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT").unwrap_or(3600));
-
-    let mut interval = interval(client_reap_interval);
-
-    loop {
-        interval.tick().await;
-        let right_now = Instant::now();
-
-        map.retain(|_, (_, last_used)| *last_used + client_decay_timeout > right_now);
-
-        debug!("Done reaping timed out HTTP ratelimiters");
-    }
+    inner: ExpiringLru<String, InMemoryRatelimiter>,
 }
 
 impl RatelimiterMap {
@@ -43,71 +21,42 @@ impl RatelimiterMap {
             default_token.insert_str(0, "Bot ");
         }
 
-        let max_size = parse_env("CLIENT_CACHE_MAX_SIZE");
+        let reap_interval = Duration::from_secs(parse_env("CLIENT_REAP_INTERVAL").unwrap_or(600));
+        let expiration = Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT").unwrap_or(3600));
 
-        let inner = Arc::new(DashMap::new());
+        let mut builder = Builder::new()
+            .reap_interval(reap_interval)
+            .expiration(expiration);
+
+        if let Some(max_size) = parse_env("CLIENT_CACHE_MAX_SIZE") {
+            builder = builder.max_size(max_size);
+        }
+
+        let inner = builder.build();
+
         let default = InMemoryRatelimiter::new();
-
-        tokio::spawn(reap_old_ratelimiters(inner.clone()));
 
         Self {
             default,
             default_token,
-            max_size,
             inner,
         }
-    }
-
-    fn lru(&self) -> Option<RefMulti<String, (InMemoryRatelimiter, Instant)>> {
-        self.inner.iter().next().map(|first_entry| {
-            self.inner.iter().fold(
-                first_entry,
-                |old, next| {
-                    if old.1 > next.1 {
-                        next
-                    } else {
-                        old
-                    }
-                },
-            )
-        })
     }
 
     pub fn get_or_insert(&self, token: Option<&str>) -> (InMemoryRatelimiter, String) {
         if let Some(token) = token {
             if token == self.default_token {
                 (self.default.clone(), self.default_token.clone())
+            } else if let Some(entry) = self.inner.get(token) {
+                (entry.value().clone(), token.to_string())
             } else {
-                let access_time = Instant::now();
+                let ratelimiter = InMemoryRatelimiter::new();
 
-                if let Some(mut entry) = self.inner.get_mut(token) {
-                    entry.1 = access_time;
-                    (entry.0.clone(), token.to_string())
-                } else {
-                    if self
-                        .max_size
-                        .filter(|max_size| self.inner.len() >= *max_size && max_size > &0)
-                        .is_some()
-                    {
-                        let key = self
-                            .lru()
-                            .expect("Length of inner map is guaranteed to be greater than 0")
-                            .key()
-                            .clone();
-
-                        self.inner.remove(&key);
-                        debug!("Removed oldest entry from HTTP ratelimiter cache");
-                    }
-
-                    let ratelimiter = InMemoryRatelimiter::new();
-
-                    if self.max_size.map_or(true, |max| max != 0) {
-                        self.inner
-                            .insert(token.to_string(), (ratelimiter.clone(), access_time));
-                    }
-
-                    (ratelimiter, token.to_string())
+                if !self.inner.full() {
+                    self.inner.insert(token.to_string(), ratelimiter.clone());
                 }
+
+                (ratelimiter, token.to_string())
             }
         } else {
             (self.default.clone(), self.default_token.clone())
