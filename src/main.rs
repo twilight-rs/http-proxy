@@ -40,6 +40,10 @@ use lazy_static::lazy_static;
 use metrics::histogram;
 #[cfg(feature = "expose-metrics")]
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+#[cfg(feature = "expose-metrics")]
+use metrics_util::MetricKindMask;
+#[cfg(feature = "expose-metrics")]
+use std::time::Duration;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
@@ -85,7 +89,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "expose-metrics")]
     {
-        let recorder = PrometheusBuilder::new().build_recorder();
+        let recorder = PrometheusBuilder::new()
+            .idle_timeout(
+                MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM,
+                Some(Duration::from_secs(120)),
+            )
+            .build_recorder();
         handle = Arc::new(recorder.handle());
         metrics::set_boxed_recorder(Box::new(recorder))
             .expect("Failed to create metrics receiver!");
