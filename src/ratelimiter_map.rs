@@ -1,31 +1,16 @@
 use dashmap::{mapref::multiple::RefMulti, DashMap};
-use std::{env, str::FromStr, sync::Arc};
+use std::sync::Arc;
 use tokio::time::{interval, Duration, Instant};
-use tracing::{debug, warn};
+use tracing::debug;
 use twilight_http_ratelimiting::InMemoryRatelimiter;
+
+use crate::parse_env;
 
 pub struct RatelimiterMap {
     default: InMemoryRatelimiter,
     default_token: String,
     max_size: Option<usize>,
     inner: Arc<DashMap<String, (InMemoryRatelimiter, Instant)>>,
-}
-
-fn parse_env<T: FromStr>(key: &str) -> Option<T> {
-    env::var_os(key).and_then(|value| match value.into_string() {
-        Ok(s) => {
-            if let Ok(t) = s.parse() {
-                Some(t)
-            } else {
-                warn!("Unable to parse {}, proceeding with defaults", key);
-                None
-            }
-        }
-        Err(s) => {
-            warn!("{} is not UTF-8: {:?}", key, s);
-            None
-        }
-    })
 }
 
 async fn reap_old_ratelimiters(map: Arc<DashMap<String, (InMemoryRatelimiter, Instant)>>) {

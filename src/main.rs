@@ -22,7 +22,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::EnvFilter;
 use twilight_http_ratelimiting::{
     InMemoryRatelimiter, Method, Path, RatelimitHeaders, Ratelimiter,
@@ -40,6 +40,10 @@ use lazy_static::lazy_static;
 use metrics::histogram;
 #[cfg(feature = "expose-metrics")]
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+#[cfg(feature = "expose-metrics")]
+use metrics_util::MetricKindMask;
+#[cfg(feature = "expose-metrics")]
+use std::time::Duration;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
@@ -85,7 +89,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "expose-metrics")]
     {
-        let recorder = PrometheusBuilder::new().build_recorder();
+        let timeout = parse_env("METRIC_TIMEOUT").unwrap_or(300);
+        let recorder = PrometheusBuilder::new()
+            .idle_timeout(
+                MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM,
+                Some(Duration::from_secs(timeout)),
+            )
+            .build_recorder();
         handle = Arc::new(recorder.handle());
         metrics::set_boxed_recorder(Box::new(recorder))
             .expect("Failed to create metrics receiver!");
@@ -403,4 +413,21 @@ fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<Body> {
     Response::builder()
         .body(Body::from(handle.render()))
         .unwrap()
+}
+
+pub fn parse_env<T: FromStr>(key: &str) -> Option<T> {
+    env::var_os(key).and_then(|value| match value.into_string() {
+        Ok(s) => {
+            if let Ok(t) = s.parse() {
+                Some(t)
+            } else {
+                warn!("Unable to parse {}, proceeding with defaults", key);
+                None
+            }
+        }
+        Err(s) => {
+            warn!("{} is not UTF-8: {:?}", key, s);
+            None
+        }
+    })
 }

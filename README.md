@@ -72,6 +72,11 @@ enviroment variables:
   ratelimiting information will be removed
 - `CLIENT_REAP_INTERVAL` (in seconds; defaults to 10 minutes) changes the
   interval at which ratelimiting information will be checked for decay
+- `METRIC_TIMEOUT` (in seconds; defaults to 5 minutes) controls how long
+  metrics (metrics are identified by their combination of http method + route +
+  response code + ratelimit scope) will continue to be reported past their last
+  occurence before they are discarded. This avoids polluting your metrics with
+  one off request metrics (9 datapoints per scrape) for long after it happened
 
 ### Running via Docker
 
