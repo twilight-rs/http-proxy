@@ -176,13 +176,6 @@ where
     pub fn len(&self) -> usize {
         self.inner.len()
     }
-
-    pub fn full(&self) -> bool {
-        match self.max_size {
-            Some(max_size) => self.len() >= max_size,
-            None => false,
-        }
-    }
 }
 
 pub struct Builder<K, V> {
@@ -233,32 +226,36 @@ where
     }
 }
 
-#[tokio::test]
-async fn test_lru() {
-    use tokio::time::sleep;
+#[cfg(test)]
+mod tests {
+    use super::Builder;
+    use tokio::time::{sleep, Duration};
 
-    let lru = Builder::new()
-        .expiration(Duration::from_secs(1))
-        .reap_interval(Duration::from_millis(500))
-        .max_size(2)
-        .build();
+    #[tokio::test]
+    async fn test_lru() {
+        let lru = Builder::new()
+            .expiration(Duration::from_secs(1))
+            .reap_interval(Duration::from_millis(500))
+            .max_size(2)
+            .build();
 
-    lru.insert(1, 2);
+        lru.insert(1, 2);
 
-    // Ref has to be dropped to allow cleanup task to run!
-    // This is a huge downside of the current implementation,
-    // it uses get_mut and therefore easily deadlocks, for example
-    // if you remove this scope.
-    {
-        let entry = lru.get(&1).unwrap();
-        assert_eq!(entry.value(), &2);
+        // Ref has to be dropped to allow cleanup task to run!
+        // This is a huge downside of the current implementation,
+        // it uses get_mut and therefore easily deadlocks, for example
+        // if you remove this scope.
+        {
+            let entry = lru.get(&1).unwrap();
+            assert_eq!(entry.value(), &2);
+        }
+        sleep(Duration::from_secs(2)).await;
+        assert!(lru.get(&1).is_none());
+
+        for i in 2..5 {
+            lru.insert(i, 0);
+        }
+
+        assert_eq!(lru.len(), 2);
     }
-    sleep(Duration::from_secs(2)).await;
-    assert!(lru.get(&1).is_none());
-
-    for i in 2..5 {
-        lru.insert(i, 0);
-    }
-
-    assert_eq!(lru.len(), 2);
 }

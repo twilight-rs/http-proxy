@@ -51,10 +51,7 @@ impl RatelimiterMap {
                 (entry.value().clone(), token.to_string())
             } else {
                 let ratelimiter = InMemoryRatelimiter::new();
-
-                if !self.inner.full() {
-                    self.inner.insert(token.to_string(), ratelimiter.clone());
-                }
+                self.inner.insert(token.to_string(), ratelimiter.clone());
 
                 (ratelimiter, token.to_string())
             }
