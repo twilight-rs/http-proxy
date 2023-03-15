@@ -1,0 +1,108 @@
+name: Docker build
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+
+jobs:
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - tag: amd64
+            features: ""
+            arch: amd64
+            rust-target: x86_64-unknown-linux-musl
+            musl-target: x86_64-linux-musl
+          - tag: metrics-amd64
+            features: expose-metrics
+            arch: amd64
+            rust-target: x86_64-unknown-linux-musl
+            musl-target: x86_64-linux-musl
+          - tag: armv8
+            features: ""
+            arch: armv8
+            rust-target: aarch64-unknown-linux-musl
+            musl-target: aarch64-linux-musl
+          - tag: metrics-armv8
+            features: expose-metrics
+            arch: armv8
+            rust-target: aarch64-unknown-linux-musl
+            musl-target: aarch64-linux-musl
+
+    steps:
+      # Podman 4.x is necessary here because it supports --platform=$BUILDPLATFORM. Otherwise, podman
+      # would pull the base image for aarch64 when building for aarch64. See https://github.com/containers/buildah/pull/3757
+      # for the implementation. GitHub actions currently still ship Podman 3.x, even though 4.x has been
+      # out for over a year.
+      # The repository used is the same as GitHub actions uses for their source - just that it's the unstable version
+      # rather than the stable one.
+      # TODO: Once podman 4.x is available in actions by default (or in the Ubuntu repositories), remove this.
+      - name: Install podman 4.x
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://download.opensuse.org/repositories/devel:kubic:libcontainers:unstable/xUbuntu_$(lsb_release -rs)/Release.key \
+            | gpg --dearmor \
+            | sudo tee /etc/apt/keyrings/devel_kubic_libcontainers_unstable.gpg > /dev/null
+          echo \
+            "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/devel_kubic_libcontainers_unstable.gpg]\
+              https://download.opensuse.org/repositories/devel:kubic:libcontainers:unstable/xUbuntu_$(lsb_release -rs)/ /" \
+            | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:unstable.list > /dev/null
+          sudo apt -qq -y purge buildah podman
+          sudo apt -qq -y autoremove --purge
+          sudo apt update -qq
+          sudo apt -qq -y install podman
+
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Login to ghcr
+        if: github.ref == 'refs/heads/trunk' && github.event_name != 'pull_request'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login -u ${{ github.repository_owner }} --password-stdin ghcr.io
+
+      - name: Convert GITHUB_REPOSITORY into lowercase
+        run: |
+          echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
+      - name: Build ${{ matrix.tag }}
+        run: |
+          podman build \
+            --format docker \
+            --arch ${{ matrix.arch }} \
+            --build-arg FEATURES=${{ matrix.features }} \
+            --build-arg RUST_TARGET=${{ matrix.rust-target }} \
+            --build-arg MUSL_TARGET=${{ matrix.musl-target }} \
+            -t http-proxy:${{ matrix.tag }} \
+            .
+
+      - name: Push image
+        if: github.ref == 'refs/heads/trunk' && github.event_name != 'pull_request'
+        run: |
+          podman tag http-proxy:${{ matrix.tag }} ghcr.io/${REPO}:${{ matrix.tag }}
+          podman push ghcr.io/${REPO}:${{ matrix.tag }}
+
+  create-manifest:
+    name: Create Docker manifests
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.ref == 'refs/heads/trunk' && github.event_name != 'pull_request'
+
+    steps:
+      - name: Login to ghcr
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login -u ${{ github.repository_owner }} --password-stdin ghcr.io
+
+      - name: Convert GITHUB_REPOSITORY into lowercase
+        run: |
+          echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
+      - name: Create manifest and push it
+        run: |
+          podman manifest create http-proxy-latest docker://ghcr.io/${REPO}:amd64 docker://ghcr.io/${REPO}:armv8
+          podman manifest create http-proxy-metrics docker://ghcr.io/${REPO}:metrics-amd64 docker://ghcr.io/${REPO}:metrics-armv8
+          podman manifest push --format v2s2 http-proxy-latest docker://ghcr.io/${REPO}:latest
+          podman manifest push --format v2s2 http-proxy-metrics docker://ghcr.io/${REPO}:metrics
