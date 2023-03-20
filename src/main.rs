@@ -1,4 +1,5 @@
 mod error;
+mod expiring_lru;
 mod ratelimiter_map;
 
 use error::RequestError;
