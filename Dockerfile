@@ -5,7 +5,7 @@ ARG MUSL_TARGET="x86_64-linux-musl"
 # The crate features to build this with
 ARG FEATURES=""
 
-FROM alpine:latest as build
+FROM --platform=$BUILDPLATFORM docker.io/alpine:latest as build
 ARG RUST_TARGET
 ARG MUSL_TARGET
 ARG FEATURES

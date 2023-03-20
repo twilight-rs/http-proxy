@@ -23,7 +23,7 @@ $ curl http://localhost:3000/api/users/@me
 $ curl http://localhost:3000/api/v8/users/@me
 ```
 
-The proxy actively supports routes from API v9, but will also try to request
+The proxy actively supports routes from API v10, but will also try to request
 the corresponding routes on older or newer API versions if you so request in
 the URL.
 
@@ -80,20 +80,23 @@ enviroment variables:
 
 ### Running via Docker
 
-Prebuilt Docker images are published on [Docker Hub].
+| :exclamation:  The published images on Docker Hub will not work from April 14, 2023 due to Docker removing free team organizations! Use the new location described below. |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+
+Prebuilt Docker images are published on [Github's container registry].
 
 ```sh
-$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy
+$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 ghcr.io/twilight-rs/http-proxy
 # Or with metrics enabled
-$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 twilightrs/http-proxy:metrics
+$ docker run -itd -e DISCORD_TOKEN="my token" -p 3000:80 ghcr.io/twilight-rs/http-proxy:metrics
 ```
 
 This will set the discord token to `"my token"` and map the bound port to port
 3000 on the host machine.
 
-Images come in multiple different variants for metrics and supported
-architectures. You can use these with their corresponding image tags found on
-the [Docker Hub tags page][docker-hub-tags].
+Images come in two variants: The `metrics` tag is a build with prometheus metrics
+support, the `latest` tag is a build without metrics support. Both support `x86_64`
+as well as `aarch64` architectures.
 
 ### Running via Cargo
 
@@ -137,5 +140,4 @@ status codes include:
 - `502` if the request made by the proxy fails
 
 [twilight]: https://github.com/twilight-rs/twilight
-[docker hub]: https://hub.docker.com/r/twilightrs/http-proxy
-[docker-hub-tags]: https://hub.docker.com/r/twilightrs/http-proxy/tags
+[github's container registry]: https://github.com/twilight-rs/http-proxy/pkgs/container/http-proxy
