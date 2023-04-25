@@ -91,7 +91,7 @@ async fn decay_task<K, V>(
                         }
                         TimerUpdate::RemoveLru { return_map_key_to } => {
                             debug!("Removing least recently used item from ratelimiter decay queue");
-                            if let Some(expired) = queue.next_expiring().and_then(|key| queue.try_remove(&key)) {
+                            if let Some(expired) = queue.peek().and_then(|key| queue.try_remove(&key)) {
                                 let _ = return_map_key_to.send(Some(expired.into_inner()));
                             } else {
                                 let _ = return_map_key_to.send(None);
