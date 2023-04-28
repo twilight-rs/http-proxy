@@ -1,10 +1,7 @@
 use dashmap::{mapref::one::Ref, DashMap};
 use futures_util::StreamExt;
 use std::{borrow::Borrow, hash::Hash, marker::PhantomData, ops::Deref, sync::Arc, time::Duration};
-use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    oneshot,
-};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio_util::time::{delay_queue::Key, DelayQueue};
 use tracing::debug;
 
@@ -50,9 +47,9 @@ where
 }
 
 async fn decay_task<K, V>(
-    map: ExpiringLru<K, V>,
+    map: Arc<DashMap<K, Entry<V>>>,
     expiration: Duration,
-    mut rx: UnboundedReceiver<TimerUpdate<K>>,
+    mut rx: UnboundedReceiver<TimerUpdate<K, V>>,
 ) where
     K: Eq + Hash + Clone + Send + Sync + 'static,
     V: Send + Sync + 'static,
@@ -61,71 +58,59 @@ async fn decay_task<K, V>(
 
     loop {
         tokio::select! {
-            expired = queue.next(), if !queue.is_empty() => {
+            Some(key) = queue.next(), if !queue.is_empty() => {
                 // An item expired in the queue, remove it from the map
-                if let Some(key) = expired {
-                    debug!("Removing expired entry from ratelimiter decay queue");
-                    map.remove(key.get_ref());
-                } else {
-                    // This should not occur because we only poll next if the queue is not empty
-                    break;
-                }
+                debug!("Removing expired entry from ratelimiter decay queue");
+                map.remove(key.get_ref());
             }
-            msg = rx.recv() => {
-                if let Some(msg) = msg {
-                    match msg {
-                        TimerUpdate::Add { map_key, return_key_to } => {
-                            debug!("Adding entry to ratelimiter decay queue");
-                            let key = queue.insert(map_key, expiration);
-                            let _ = return_key_to.send(key);
-                        },
-                        TimerUpdate::Refresh { key } => {
-                            debug!("Refreshing entry in ratelimiter decay queue");
-                            // This will panic if the key is not present, therefore
-                            // we check that in the calling end
-                            queue.reset(&key, expiration);
-                        },
-                        TimerUpdate::Remove { key } => {
-                            debug!("Removing entry in ratelimiter decay queue");
-                            queue.try_remove(&key);
-                        }
-                        TimerUpdate::RemoveLru { return_map_key_to } => {
-                            debug!("Removing least recently used item from ratelimiter decay queue");
-                            if let Some(expired) = queue.peek().and_then(|key| queue.try_remove(&key)) {
-                                let _ = return_map_key_to.send(Some(expired.into_inner()));
-                            } else {
-                                let _ = return_map_key_to.send(None);
-                            };
+            Some(msg) = rx.recv() => {
+                match msg {
+                    TimerUpdate::Add { key, value } => {
+                        debug!("Adding entry to ratelimiter decay queue");
+                        let decay_key = queue.insert(key.clone(), expiration);
+                        let entry = Entry {
+                            inner: value,
+                            decay_key,
+                        };
+                        map.insert(key, entry);
+                    },
+                    TimerUpdate::Refresh { key } => {
+                        debug!("Refreshing entry in ratelimiter decay queue");
+                        // This will panic if the key is not present, therefore
+                        // we check that in the calling end
+                        queue.reset(&key, expiration);
+                    },
+                    TimerUpdate::Remove { key } => {
+                        debug!("Removing entry in ratelimiter decay queue");
+                        queue.try_remove(&key);
+                    }
+                    TimerUpdate::RemoveLru => {
+                        debug!("Removing least recently used item from ratelimiter decay queue");
+                        if let Some(expired) = queue.peek().and_then(|key| queue.try_remove(&key)) {
+                            map.remove(expired.get_ref());
                         }
                     }
-                } else {
-                    // Channel closed by other end
-                    break;
                 }
+            },
+            else => {
+                // Channel has been closed by the other end, i.e. the ExpiringLru has
+                // been dropped.
+                break;
             }
         };
     }
 }
 
-enum TimerUpdate<K> {
-    Add {
-        map_key: K,
-        return_key_to: oneshot::Sender<Key>,
-    },
-    Refresh {
-        key: Key,
-    },
-    Remove {
-        key: Key,
-    },
-    RemoveLru {
-        return_map_key_to: oneshot::Sender<Option<K>>,
-    },
+enum TimerUpdate<K, V> {
+    Add { key: K, value: V },
+    Refresh { key: Key },
+    Remove { key: Key },
+    RemoveLru,
 }
 
 pub struct ExpiringLru<K, V> {
     inner: Arc<DashMap<K, Entry<V>>>,
-    decay_tx: UnboundedSender<TimerUpdate<K>>,
+    decay_tx: UnboundedSender<TimerUpdate<K, V>>,
     max_size: Option<usize>,
 }
 
@@ -149,43 +134,26 @@ where
         let (decay_tx, decay_rx) = unbounded_channel();
 
         let this = Self {
-            inner,
+            inner: inner.clone(),
             decay_tx,
             max_size,
         };
 
-        tokio::spawn(decay_task(this.clone(), expiration, decay_rx));
+        tokio::spawn(decay_task(inner, expiration, decay_rx));
 
         this
     }
 
-    pub async fn insert(&self, key: K, value: V) {
+    pub fn insert(&self, key: K, value: V) {
         match self.max_size {
             Some(max_size) if max_size == 0 => return,
             Some(max_size) if self.len() >= max_size => {
-                self.remove_lru().await;
+                self.remove_lru();
             }
             _ => {}
         }
 
-        let (tx, rx) = oneshot::channel();
-
-        if self
-            .decay_tx
-            .send(TimerUpdate::Add {
-                map_key: key.clone(),
-                return_key_to: tx,
-            })
-            .is_ok()
-        {
-            if let Ok(decay_key) = rx.await {
-                let entry = Entry {
-                    inner: value,
-                    decay_key,
-                };
-                self.inner.insert(key, entry);
-            }
-        }
+        let _ = self.decay_tx.send(TimerUpdate::Add { key, value });
     }
 
     pub fn get<Q>(&self, key: &Q) -> Option<EntryRef<'_, K, V>>
@@ -193,36 +161,26 @@ where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        self.inner.get(key).map(|entry| {
-            let _ = self.decay_tx.send(TimerUpdate::Refresh {
-                key: entry.decay_key,
-            });
-
-            EntryRef(entry)
-        })
-    }
-
-    async fn remove_lru(&self) {
-        let (tx, rx) = oneshot::channel();
-
-        let _ = self.decay_tx.send(TimerUpdate::RemoveLru {
-            return_map_key_to: tx,
+        let entry = self.inner.get(key)?;
+        _ = self.decay_tx.send(TimerUpdate::Refresh {
+            key: entry.decay_key,
         });
 
-        if let Ok(Some(key)) = rx.await {
-            self.remove(&key);
-        }
+        Some(EntryRef(entry))
     }
 
+    fn remove_lru(&self) {
+        _ = self.decay_tx.send(TimerUpdate::RemoveLru);
+    }
+
+    #[allow(unused)]
     pub fn remove(&self, key: &K) -> Option<(K, Entry<V>)> {
-        if let Some((key, item)) = self.inner.remove(key) {
-            let _ = self.decay_tx.send(TimerUpdate::Remove {
-                key: item.decay_key,
-            });
-            Some((key, item))
-        } else {
-            None
-        }
+        let (key, item) = self.inner.remove(key)?;
+        _ = self.decay_tx.send(TimerUpdate::Remove {
+            key: item.decay_key,
+        });
+
+        Some((key, item))
     }
 
     pub fn len(&self) -> usize {
@@ -274,14 +232,23 @@ mod tests {
     use super::Builder;
     use tokio::time::{sleep, Duration};
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn test_lru() {
         let lru = Builder::new()
             .expiration(Duration::from_secs(1))
             .max_size(2)
             .build();
 
-        lru.insert(1, 2).await;
+        lru.insert(1, 2);
+
+        // The actual LRU cache insert is performed in a different
+        // task and insert will return pre-emptively after notifying
+        // the task of the insertion. In order to allow the task to run
+        // and receive the insertion message, we have to yield back to the
+        // runtime. The alternative would be making insert asynchronous and
+        // wait on a oneshot channel, but there is no benefit to that
+        // for our usecase.
+        tokio::task::yield_now().await;
 
         {
             let entry = lru.get(&1).unwrap();
@@ -292,10 +259,12 @@ mod tests {
         assert!(lru.get(&1).is_none());
 
         for i in 2..5 {
-            lru.insert(i, 0).await;
+            lru.insert(i, 0);
+
             // If we insert instantly after another,
             // upon inserting 4 it will remove either 2 or 3,
             // because they were inserted at the same time.
+            //
             // For reproducibility, add a delay.
             sleep(Duration::from_millis(50)).await;
         }

@@ -118,20 +118,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let token = incoming
                     .headers()
                     .get("authorization")
-                    .and_then(|value| value.to_str().ok())
-                    .map(ToString::to_string);
-                let ratelimiter_map = ratelimiter_map.clone();
+                    .and_then(|value| value.to_str().ok());
+                let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
                 let client = client.clone();
 
                 #[cfg(feature = "expose-metrics")]
-                let handle = handle.clone();
+                {
+                    let handle = handle.clone();
 
-                async move {
-                    let (ratelimiter, token) =
-                        ratelimiter_map.get_or_insert(token.as_deref()).await;
-
-                    #[cfg(feature = "expose-metrics")]
-                    {
+                    async move {
                         Ok::<_, Infallible>({
                             if incoming.uri().path() == "/metrics" {
                                 handle_metrics(handle)
@@ -142,9 +137,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             }
                         })
                     }
+                }
 
-                    #[cfg(not(feature = "expose-metrics"))]
-                    {
+                #[cfg(not(feature = "expose-metrics"))]
+                {
+                    async move {
                         Ok::<_, Infallible>(
                             handle_request(client, ratelimiter, token, incoming)
                                 .await

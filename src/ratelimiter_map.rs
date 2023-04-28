@@ -40,7 +40,7 @@ impl RatelimiterMap {
         }
     }
 
-    pub async fn get_or_insert(&self, token: Option<&str>) -> (InMemoryRatelimiter, String) {
+    pub fn get_or_insert(&self, token: Option<&str>) -> (InMemoryRatelimiter, String) {
         if let Some(token) = token {
             if token == self.default_token {
                 (self.default.clone(), self.default_token.clone())
@@ -49,9 +49,7 @@ impl RatelimiterMap {
             } else {
                 let ratelimiter = InMemoryRatelimiter::new();
 
-                self.inner
-                    .insert(token.to_string(), ratelimiter.clone())
-                    .await;
+                self.inner.insert(token.to_string(), ratelimiter.clone());
 
                 (ratelimiter, token.to_string())
             }
