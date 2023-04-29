@@ -12,24 +12,13 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install stable toolchain
-        id: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Setup cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-check-rustc-${{ steps.toolchain.outputs.rustc_hash }}-${ hashfiles('**/Cargo.lock') }}
+        uses: Swatinem/rust-cache@v2
 
       - run: cargo check
 
@@ -39,32 +28,21 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install stable toolchain
-        id: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: clippy
-          profile: minimal
-          override: true
 
       - name: Setup cache
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-clippy-rustc-${{ steps.toolchain.outputs.rustc_hash }}-${ hashfiles('**/Cargo.lock') }}
+        uses: Swatinem/rust-cache@v2
+
+      - name: Add problem matchers
+        run: echo "::add-matcher::.github/rust.json"
 
       - name: Run clippy
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --workspace
-          name: clippy results
+        run: cargo clippy
 
   rustfmt:
     name: rustfmt
@@ -72,15 +50,12 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
           components: rustfmt
-          profile: minimal
-          override: true
 
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
