@@ -16,11 +16,6 @@ impl<'a, K, V> EntryRef<'a, K, V>
 where
     K: Eq + Hash,
 {
-    #[allow(unused)]
-    pub fn key(&self) -> &K {
-        self.0.key()
-    }
-
     pub fn value(&self) -> &V {
         &self.0.value().inner
     }
@@ -80,10 +75,6 @@ async fn decay_task<K, V>(
                         // we check that in the calling end
                         queue.reset(&key, expiration);
                     },
-                    TimerUpdate::Remove { key } => {
-                        debug!("Removing entry in ratelimiter decay queue");
-                        queue.try_remove(&key);
-                    }
                     TimerUpdate::RemoveLru => {
                         debug!("Removing least recently used item from ratelimiter decay queue");
                         if let Some(expired) = queue.peek().and_then(|key| queue.try_remove(&key)) {
@@ -104,7 +95,6 @@ async fn decay_task<K, V>(
 enum TimerUpdate<K, V> {
     Add { key: K, value: V },
     Refresh { key: Key },
-    Remove { key: Key },
     RemoveLru,
 }
 
@@ -112,16 +102,6 @@ pub struct ExpiringLru<K, V> {
     inner: Arc<DashMap<K, Entry<V>>>,
     decay_tx: UnboundedSender<TimerUpdate<K, V>>,
     max_size: Option<usize>,
-}
-
-impl<K, V> Clone for ExpiringLru<K, V> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            decay_tx: self.decay_tx.clone(),
-            max_size: self.max_size,
-        }
-    }
 }
 
 impl<K, V> ExpiringLru<K, V>
@@ -153,7 +133,7 @@ where
             _ => {}
         }
 
-        let _ = self.decay_tx.send(TimerUpdate::Add { key, value });
+        _ = self.decay_tx.send(TimerUpdate::Add { key, value });
     }
 
     pub fn get<Q>(&self, key: &Q) -> Option<EntryRef<'_, K, V>>
@@ -171,16 +151,6 @@ where
 
     fn remove_lru(&self) {
         _ = self.decay_tx.send(TimerUpdate::RemoveLru);
-    }
-
-    #[allow(unused)]
-    pub fn remove(&self, key: &K) -> Option<(K, Entry<V>)> {
-        let (key, item) = self.inner.remove(key)?;
-        _ = self.decay_tx.send(TimerUpdate::Remove {
-            key: item.decay_key,
-        });
-
-        Some((key, item))
     }
 
     pub fn len(&self) -> usize {
