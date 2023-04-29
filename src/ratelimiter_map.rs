@@ -21,12 +21,9 @@ impl RatelimiterMap {
             default_token.insert_str(0, "Bot ");
         }
 
-        let reap_interval = Duration::from_secs(parse_env("CLIENT_REAP_INTERVAL").unwrap_or(600));
         let expiration = Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT").unwrap_or(3600));
 
-        let mut builder = Builder::new()
-            .reap_interval(reap_interval)
-            .expiration(expiration);
+        let mut builder = Builder::new().expiration(expiration);
 
         if let Some(max_size) = parse_env("CLIENT_CACHE_MAX_SIZE") {
             builder = builder.max_size(max_size);
@@ -51,6 +48,7 @@ impl RatelimiterMap {
                 (entry.value().clone(), token.to_string())
             } else {
                 let ratelimiter = InMemoryRatelimiter::new();
+
                 self.inner.insert(token.to_string(), ratelimiter.clone());
 
                 (ratelimiter, token.to_string())

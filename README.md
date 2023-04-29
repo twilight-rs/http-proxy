@@ -70,8 +70,6 @@ enviroment variables:
 - `CLIENT_CACHE_MAX_SIZE` (defaults to no limit) limits the amount of
   ratelimiting information in the cache - if full, the least recently used
   ratelimiting information will be removed
-- `CLIENT_REAP_INTERVAL` (in seconds; defaults to 10 minutes) changes the
-  interval at which ratelimiting information will be checked for decay
 - `METRIC_TIMEOUT` (in seconds; defaults to 5 minutes) controls how long
   metrics (metrics are identified by their combination of http method + route +
   response code + ratelimit scope) will continue to be reported past their last
