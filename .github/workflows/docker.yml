@@ -24,12 +24,12 @@ jobs:
             musl-target: x86_64-linux-musl
           - tag: armv8
             features: ""
-            arch: armv8
+            arch: arm64/v8
             rust-target: aarch64-unknown-linux-musl
             musl-target: aarch64-linux-musl
           - tag: metrics-armv8
             features: expose-metrics
-            arch: armv8
+            arch: arm64/v8
             rust-target: aarch64-unknown-linux-musl
             musl-target: aarch64-linux-musl
 
