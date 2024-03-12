@@ -5,88 +5,72 @@ ARG MUSL_TARGET="x86_64-linux-musl"
 # The crate features to build this with
 ARG FEATURES=""
 
-FROM --platform=$BUILDPLATFORM docker.io/alpine:latest as build
+FROM --platform=$BUILDPLATFORM rust:latest AS chef
 ARG RUST_TARGET
 ARG MUSL_TARGET
 ARG FEATURES
 
-RUN apk upgrade && \
-    apk add curl gcc musl-dev && \
-    curl -sSf https://sh.rustup.rs | sh -s -- --profile minimal --default-toolchain nightly --component rust-src -y
+RUN <<EOT
+    set -ex
+    apt-get update
+    apt-get install --assume-yes musl-dev clang lld
+EOT
 
-RUN source $HOME/.cargo/env && \
-    mkdir -p /app/.cargo && \
-    if [ "$RUST_TARGET" != $(rustup target list --installed) ]; then \
-        rustup target add $RUST_TARGET && \
-        curl -L "https://musl.cc/$MUSL_TARGET-cross.tgz" -o /toolchain.tgz && \
-        tar xf toolchain.tgz && \
-        ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-gcc" "/usr/bin/$MUSL_TARGET-gcc" && \
-        ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-ld" "/usr/bin/$MUSL_TARGET-ld" && \
-        ln -s "/$MUSL_TARGET-cross/bin/$MUSL_TARGET-strip" "/usr/bin/actual-strip" && \
-        GCC_VERSION=$($MUSL_TARGET-gcc --version | grep gcc | awk '{print $3}') && \
-        echo -e "\
-[build]\n\
-rustflags = [\"-L\", \"native=/$MUSL_TARGET-cross/$MUSL_TARGET/lib\", \"-L\", \"native=/$MUSL_TARGET-cross/lib/gcc/$MUSL_TARGET/$GCC_VERSION/\", \"-l\", \"static=gcc\", \"-Z\", \"gcc-ld=lld\"]\n\
-[target.$RUST_TARGET]\n\
-linker = \"$MUSL_TARGET-gcc\"\n\
-[unstable]\n\
-build-std = [\"std\", \"panic_abort\"]\n\
-" > /app/.cargo/config; \
-    else \
-        echo "skipping toolchain as we are native" && \
-        echo -e "\
-[build]\n\
-rustflags = [\"-L\", \"native=/usr/lib\"]\n\
-[unstable]\n\
-build-std = [\"std\", \"panic_abort\"]\n\
-" > /app/.cargo/config && \
-        ln -s /usr/bin/strip /usr/bin/actual-strip; \
-    fi
+RUN rustup target add $RUST_TARGET
+
+RUN cargo install cargo-chef --locked
+
+COPY <<EOF /app/.cargo/config
+[env]
+CC_aarch64-unknown-linux-musl = "clang -target aarch64-unknown-linux-musl -fuse-ld=lld"
+CXX_aarch64-unknown-linux-musl = "clang++ -target aarch64-unknown-linux-musl -fuse-ld=lld"
+CC_x86_64-unknown-linux-musl = "clang -target x86_64-unknown-linux-musl -fuse-ld=lld"
+CXX_x86_64-unknown-linux-musl = "clang++ -target x86_64-unknown-linux-musl -fuse-ld=lld"
+
+[target.aarch64-unknown-linux-musl]
+linker = "clang"
+rustflags = ["-C", "link-args=-target aarch64-unknown-linux-musl -fuse-ld=lld"]
+
+[target.x86_64-unknown-linux-musl]
+linker = "clang"
+rustflags = ["-C", "link-args=-target x86_64-unknown-linux-musl -fuse-ld=lld"]
+
+#[unstable]
+#build-std = ["std", "panic_abort"]
+EOF
 
 WORKDIR /app
 
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# We need a source directory so that it builds the dependencies and an empty
-# binary.
-RUN mkdir src/
-RUN echo 'fn main() {}' > ./src/main.rs
-RUN source $HOME/.cargo/env && \
-    if [ "$FEATURES" == "" ]; then \
-      cargo build --release \
-          --target="$RUST_TARGET"; \
-    else \
-      cargo build --release \
-          --target="$RUST_TARGET" --features="$FEATURES"; \
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN <<EOF bash
+    set -ex
+    if test "$FEATURES" = ""; then
+      cargo chef cook --target "$RUST_TARGET" --release --recipe-path recipe.json
+    else
+      cargo chef cook --target "$RUST_TARGET" --features="$FEATURES" --release --recipe-path recipe.json
     fi
+EOF
 
-# Now, delete the fake source and copy in the actual source. This allows us to
-# have a previous compilation step for compiling the dependencies, while being
-# able to only copy in and compile the binary itself when something in the
-# source changes.
-#
-# This is very important. If we just copy in the source after copying in the
-# Cargo.lock and Cargo.toml, then every time the source changes the dependencies
-# would have to be re-downloaded and re-compiled.
-#
-# Also, remove the artifacts of building the binaries.
-RUN rm -f target/$RUST_TARGET/release/deps/twilight_http_proxy*
-COPY ./src ./src
+COPY . .
 
-RUN source $HOME/.cargo/env && \
-    if [ "$FEATURES" == "" ]; then \
-      cargo build --release \
-          --target="$RUST_TARGET"; \
-    else \
-      cargo build --release \
-          --target="$RUST_TARGET" --features="$FEATURES"; \
-    fi && \
-    cp target/$RUST_TARGET/release/twilight-http-proxy /twilight-http-proxy && \
-    actual-strip /twilight-http-proxy
+RUN <<EOF bash
+    set -ex
+    if test "$FEATURES" = "" ; then
+      cargo build --release --target $RUST_TARGET
+    else
+      cargo build --release --target $RUST_TARGET --features="$FEATURES"
+    fi
+    cp target/$RUST_TARGET/release/twilight-http-proxy /twilight-http-proxy
+EOF
+
 
 FROM scratch
 
-COPY --from=build /twilight-http-proxy /twilight-http-proxy
+COPY --from=builder /twilight-http-proxy /twilight-http-proxy
 
 CMD ["./twilight-http-proxy"]
