@@ -14,7 +14,7 @@ RUN <<EOT
     apt-get install --assume-yes musl-dev clang lld
 EOT
 
-RUN <<EOT bash
+RUN <<-EOT bash
     set -ex
     rustup target add "$RUST_TARGET"
     rustup component add rust-src --toolchain "nightly"
@@ -55,18 +55,18 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
-RUN <<EOF bash
-    #set -ex
-    #if test "$FEATURES" = ""; then
-    #  cargo chef cook --target "$RUST_TARGET" --release --recipe-path recipe.json
-    #else
-    #  cargo chef cook --target "$RUST_TARGET" --features="$FEATURES" --release --recipe-path recipe.json
-    #fi
+RUN <<-EOF bash
+    set -ex
+    if test "$FEATURES" = ""; then
+      cargo chef cook --target "$RUST_TARGET" --release --recipe-path recipe.json
+    else
+      cargo chef cook --target "$RUST_TARGET" --features="$FEATURES" --release --recipe-path recipe.json
+    fi
 EOF
 
 COPY . .
 
-RUN <<EOF bash
+RUN <<-EOF bash
     set -ex
     if test "$FEATURES" = "" ; then
       cargo build --release --target $RUST_TARGET
