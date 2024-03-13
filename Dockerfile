@@ -17,7 +17,11 @@ RUN <<EOT
     apt-get install --assume-yes musl-dev clang lld
 EOT
 
-RUN rustup target add $RUST_TARGET
+RUN <<EOT bash
+    set -ex
+    rustup target add $RUST_TARGET
+    rustup component add rust-src --toolchain "nightly-$RUST_TARGET"
+EOT
 
 RUN cargo install cargo-chef --locked
 
