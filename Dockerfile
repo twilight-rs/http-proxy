@@ -1,9 +1,9 @@
 # Rust syntax target, either x86_64-unknown-linux-musl, aarch64-unknown-linux-musl etc.
-ARG RUST_TARGET="aarch64-unknown-linux-musl"
+ARG RUST_TARGET="x86_64-unknown-linux-musl"
 # The crate features to build this with
 ARG FEATURES=""
 
-FROM --platform=$BUILDPLATFORM rustlang/rust:nightly AS chef
+FROM --platform=$BUILDPLATFORM rustlang/rust:nightly AS builder
 ARG RUST_TARGET
 ARG FEATURES
 
@@ -11,7 +11,7 @@ RUN <<EOT
     set -ex
     apt-get update
     apt-get upgrade
-    apt-get install --assume-yes musl-dev clang lld
+    apt-get install --assume-yes musl-dev clang lld libgcc-12-dev-arm64-cross
 EOT
 
 RUN <<-EOT bash
@@ -19,8 +19,6 @@ RUN <<-EOT bash
     rustup target add "$RUST_TARGET"
     rustup component add rust-src --toolchain "nightly"
 EOT
-
-RUN cargo install cargo-chef --locked
 
 COPY <<EOF /app/.cargo/config.toml
 [env]
@@ -34,6 +32,8 @@ linker = "clang"
 rustflags = [
           "-C", "link-args=-target aarch64-unknown-linux-musl -fuse-ld=lld",
           "-C", "strip=symbols",
+          # aarch64 has to link libgcc
+          "-C", "link-arg=-lgcc",
 ]
 
 [target.x86_64-unknown-linux-musl]
@@ -49,21 +49,6 @@ EOF
 
 WORKDIR /app
 
-FROM chef AS planner
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
-
-FROM chef AS builder
-COPY --from=planner /app/recipe.json recipe.json
-RUN <<-EOF bash
-    set -ex
-    if test "$FEATURES" = ""; then
-      cargo chef cook --target "$RUST_TARGET" --release --recipe-path recipe.json
-    else
-      cargo chef cook --target "$RUST_TARGET" --features="$FEATURES" --release --recipe-path recipe.json
-    fi
-EOF
-
 COPY . .
 
 RUN <<-EOF bash
@@ -75,7 +60,6 @@ RUN <<-EOF bash
     fi
     cp target/$RUST_TARGET/release/twilight-http-proxy /twilight-http-proxy
 EOF
-
 
 FROM scratch
 
