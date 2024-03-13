@@ -5,7 +5,7 @@ ARG MUSL_TARGET="x86_64-linux-musl"
 # The crate features to build this with
 ARG FEATURES=""
 
-FROM --platform=$BUILDPLATFORM rust:latest AS chef
+FROM --platform=$BUILDPLATFORM rustlang/rust:nightly AS chef
 ARG RUST_TARGET
 ARG MUSL_TARGET
 ARG FEATURES
@@ -13,6 +13,7 @@ ARG FEATURES
 RUN <<EOT
     set -ex
     apt-get update
+    apt-get upgrade
     apt-get install --assume-yes musl-dev clang lld
 EOT
 
@@ -20,7 +21,7 @@ RUN rustup target add $RUST_TARGET
 
 RUN cargo install cargo-chef --locked
 
-COPY <<EOF /app/.cargo/config
+COPY <<EOF /app/.cargo/config.toml
 [env]
 CC_aarch64-unknown-linux-musl = "clang -target aarch64-unknown-linux-musl -fuse-ld=lld"
 CXX_aarch64-unknown-linux-musl = "clang++ -target aarch64-unknown-linux-musl -fuse-ld=lld"
@@ -29,14 +30,20 @@ CXX_x86_64-unknown-linux-musl = "clang++ -target x86_64-unknown-linux-musl -fuse
 
 [target.aarch64-unknown-linux-musl]
 linker = "clang"
-rustflags = ["-C", "link-args=-target aarch64-unknown-linux-musl -fuse-ld=lld"]
+rustflags = [
+          "-C", "link-args=-target aarch64-unknown-linux-musl -fuse-ld=lld",
+          "-C", "strip", "symbols",
+]
 
 [target.x86_64-unknown-linux-musl]
 linker = "clang"
-rustflags = ["-C", "link-args=-target x86_64-unknown-linux-musl -fuse-ld=lld"]
+rustflags = [
+          "-C", "link-args=-target x86_64-unknown-linux-musl -fuse-ld=lld",
+          "-C", "strip", "symbols",
+]
 
-#[unstable]
-#build-std = ["std", "panic_abort"]
+[unstable]
+build-std = ["std", "panic_abort"]
 EOF
 
 WORKDIR /app
