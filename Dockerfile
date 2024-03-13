@@ -1,13 +1,10 @@
-# Rust syntax target, either x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, arm-unknown-linux-musleabi etc.
-ARG RUST_TARGET="x86_64-unknown-linux-musl"
-# Musl target, either x86_64-linux-musl, aarch64-linux-musl, arm-linux-musleabi, etc.
-ARG MUSL_TARGET="x86_64-linux-musl"
+# Rust syntax target, either x86_64-unknown-linux-musl, aarch64-unknown-linux-musl etc.
+ARG RUST_TARGET="aarch64-unknown-linux-musl"
 # The crate features to build this with
 ARG FEATURES=""
 
 FROM --platform=$BUILDPLATFORM rustlang/rust:nightly AS chef
 ARG RUST_TARGET
-ARG MUSL_TARGET
 ARG FEATURES
 
 RUN <<EOT
@@ -19,8 +16,8 @@ EOT
 
 RUN <<EOT bash
     set -ex
-    rustup target add $RUST_TARGET
-    rustup component add rust-src --toolchain "nightly-$RUST_TARGET"
+    rustup target add "$RUST_TARGET"
+    rustup component add rust-src --toolchain "nightly"
 EOT
 
 RUN cargo install cargo-chef --locked
@@ -47,7 +44,7 @@ rustflags = [
 ]
 
 [unstable]
-build-std = ["std", "panic_abort"]
+build-std = ["std", "panic_abort", "compiler_builtins"]
 EOF
 
 WORKDIR /app
@@ -59,12 +56,12 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 RUN <<EOF bash
-    set -ex
-    if test "$FEATURES" = ""; then
-      cargo chef cook --target "$RUST_TARGET" --release --recipe-path recipe.json
-    else
-      cargo chef cook --target "$RUST_TARGET" --features="$FEATURES" --release --recipe-path recipe.json
-    fi
+    #set -ex
+    #if test "$FEATURES" = ""; then
+    #  cargo chef cook --target "$RUST_TARGET" --release --recipe-path recipe.json
+    #else
+    #  cargo chef cook --target "$RUST_TARGET" --features="$FEATURES" --release --recipe-path recipe.json
+    #fi
 EOF
 
 COPY . .
