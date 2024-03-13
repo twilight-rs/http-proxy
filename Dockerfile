@@ -32,14 +32,14 @@ CXX_x86_64-unknown-linux-musl = "clang++ -target x86_64-unknown-linux-musl -fuse
 linker = "clang"
 rustflags = [
           "-C", "link-args=-target aarch64-unknown-linux-musl -fuse-ld=lld",
-          "-C", "strip", "symbols",
+          "-C", "strip=symbols",
 ]
 
 [target.x86_64-unknown-linux-musl]
 linker = "clang"
 rustflags = [
           "-C", "link-args=-target x86_64-unknown-linux-musl -fuse-ld=lld",
-          "-C", "strip", "symbols",
+          "-C", "strip=symbols",
 ]
 
 [unstable]
