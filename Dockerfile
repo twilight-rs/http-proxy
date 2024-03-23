@@ -1,4 +1,4 @@
-# Rust syntax target, either x86_64-unknown-linux-musl, aarch64-unknown-linux-musl etc.
+# Rust target, for example x86_64-unknown-linux-musl or aarch64-unknown-linux-musl.
 ARG RUST_TARGET="x86_64-unknown-linux-musl"
 # The crate features to build this with
 ARG FEATURES=""
