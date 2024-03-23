@@ -14,44 +14,49 @@ RUN <<EOT
     apt-get install --assume-yes musl-dev clang lld libgcc-12-dev-arm64-cross
 EOT
 
+RUN <<EOT
+    set -ex
+    cd /
+    git clone -n --depth=1 --single-branch --filter=tree:0 https://github.com/llvm/llvm-project llvm
+    cd /llvm
+    git sparse-checkout set --no-cone compiler-rt
+    git checkout
+    cd /
+EOT
+
 RUN <<-EOT bash
     set -ex
     rustup target add "$RUST_TARGET"
     rustup component add rust-src --toolchain "nightly"
 EOT
 
-COPY <<EOF /app/.cargo/config.toml
+COPY <<-EOF /app/.cargo/config.toml
 [env]
-CC_aarch64-unknown-linux-musl = "clang -target aarch64-unknown-linux-musl -fuse-ld=lld"
-CXX_aarch64-unknown-linux-musl = "clang++ -target aarch64-unknown-linux-musl -fuse-ld=lld"
-CC_x86_64-unknown-linux-musl = "clang -target x86_64-unknown-linux-musl -fuse-ld=lld"
-CXX_x86_64-unknown-linux-musl = "clang++ -target x86_64-unknown-linux-musl -fuse-ld=lld"
+RUST_COMPILER_RT_ROOT="/llvm/compiler-rt"
+CC_$RUST_TARGET = "clang -target $RUST_TARGET -fuse-ld=lld"
+CXX_$RUST_TARGET = "clang++ -target $RUST_TARGET -fuse-ld=lld"
 
-[target.aarch64-unknown-linux-musl]
+[target.$RUST_TARGET]
 linker = "clang"
 rustflags = [
-          "-C", "link-args=-target aarch64-unknown-linux-musl -fuse-ld=lld",
-          "-C", "strip=symbols",
-          # aarch64 has to link libgcc
-          "-C", "link-arg=-lgcc",
-]
-
-[target.x86_64-unknown-linux-musl]
-linker = "clang"
-rustflags = [
-          "-C", "link-args=-target x86_64-unknown-linux-musl -fuse-ld=lld",
+          "-C", "link-args=-target $RUST_TARGET -fuse-ld=lld",
           "-C", "strip=symbols",
 ]
 
 [unstable]
-build-std = ["std", "panic_abort", "compiler_builtins"]
+build-std = [
+          "std",
+          "panic_abort",
+          "compiler_builtins",
+          "compiler_builtins_c"
+]
 EOF
 
 WORKDIR /app
 
 COPY . .
 
-RUN <<-EOF bash
+RUN <<-EOT bash
     set -ex
     if test "$FEATURES" = "" ; then
       cargo build --release --target $RUST_TARGET
@@ -59,7 +64,7 @@ RUN <<-EOF bash
       cargo build --release --target $RUST_TARGET --features="$FEATURES"
     fi
     cp target/$RUST_TARGET/release/twilight-http-proxy /twilight-http-proxy
-EOF
+EOT
 
 FROM scratch
 
