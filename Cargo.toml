@@ -15,7 +15,7 @@ tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "signal"] }
 tokio-util = { version = "0.7.8", default-features = false, features = ["time"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-twilight-http-ratelimiting = { git = "https://github.com/twilight-rs/twilight.git", rev = "280437bb81e71a6992cf74619f819bc8f8c42d42" } # HEAD on 2024-06-15
+twilight-http-ratelimiting = { version = "0.16.0" }
 
 # Only used by the `expose-metrics` feature.
 metrics = { version = "0.21", optional = true }

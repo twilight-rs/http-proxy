@@ -12,7 +12,7 @@ pub struct Entry<V> {
 
 pub struct EntryRef<'a, K, V>(Ref<'a, K, Entry<V>>);
 
-impl<'a, K, V> EntryRef<'a, K, V>
+impl<K, V> EntryRef<'_, K, V>
 where
     K: Eq + Hash,
 {
@@ -21,7 +21,7 @@ where
     }
 }
 
-impl<'a, K, V> AsRef<V> for EntryRef<'a, K, V>
+impl<K, V> AsRef<V> for EntryRef<'_, K, V>
 where
     K: Eq + Hash,
 {
@@ -30,7 +30,7 @@ where
     }
 }
 
-impl<'a, K, V> Deref for EntryRef<'a, K, V>
+impl<K, V> Deref for EntryRef<'_, K, V>
 where
     K: Eq + Hash,
 {
@@ -126,7 +126,7 @@ where
 
     pub fn insert(&self, key: K, value: V) {
         match self.max_size {
-            Some(max_size) if max_size == 0 => return,
+            Some(0) => return,
             Some(max_size) if self.len() >= max_size => {
                 self.remove_lru();
             }
