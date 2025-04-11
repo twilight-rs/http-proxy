@@ -18,9 +18,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 twilight-http-ratelimiting = { version = "0.16.0" }
 
 # Only used by the `expose-metrics` feature.
-metrics = { version = "0.21", optional = true }
-metrics-exporter-prometheus = { version = "0.12", default-features = false, optional = true }
-metrics-util = { version = "0.15", optional = true }
+metrics = { version = "0.24", optional = true }
+metrics-exporter-prometheus = { version = "0.16", default-features = false, optional = true }
+metrics-util = { version = "0.19", optional = true }
 lazy_static = { version = "1.4", optional = true }
 
 [dev-dependencies]

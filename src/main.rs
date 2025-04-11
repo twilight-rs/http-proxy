@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             )
             .build_recorder();
         handle = Arc::new(recorder.handle());
-        metrics::set_boxed_recorder(Box::new(recorder))
+        metrics::set_global_recorder(Box::new(recorder))
             .expect("Failed to create metrics receiver!");
     }
 
@@ -401,7 +401,8 @@ async fn handle_request(
             .and_then(|header| header.to_str().ok())
             .unwrap_or("")
             .to_string();
-        histogram!(METRIC_KEY.as_str(), end - start, "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope);
+        histogram!(METRIC_KEY.as_str(), "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope)
+            .record(end - start);
     }
 
     debug!("{} {} ({}): {}", m, p, request_path, status);
