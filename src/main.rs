@@ -36,6 +36,8 @@ use tokio::signal::unix::{signal, SignalKind};
 use std::time::Instant;
 
 #[cfg(feature = "expose-metrics")]
+use http::header::CONTENT_TYPE;
+#[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
 use metrics::histogram;
@@ -45,8 +47,6 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::MetricKindMask;
 #[cfg(feature = "expose-metrics")]
 use std::time::Duration;
-#[cfg(feature = "expose-metrics")]
-use http::header::CONTENT_TYPE;
 
 #[cfg(feature = "expose-metrics")]
 lazy_static! {
@@ -415,7 +415,10 @@ async fn handle_request(
 #[cfg(feature = "expose-metrics")]
 fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<Body> {
     Response::builder()
-        .header(CONTENT_TYPE, HeaderValue::from_static("text/plain; version=0.0.4"))
+        .header(
+            CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4"),
+        )
         .body(Body::from(handle.render()))
         .unwrap()
 }
