@@ -10,7 +10,7 @@ ARG FEATURES
 RUN <<EOT
     set -ex
     apt-get update
-    apt-get upgrade
+    apt-get upgrade --assume-yes
     apt-get install --assume-yes musl-dev clang lld libgcc-12-dev-arm64-cross
 EOT
 
