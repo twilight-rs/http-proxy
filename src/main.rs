@@ -7,22 +7,29 @@ use http::{
     header::{AUTHORIZATION, CONNECTION, HOST, TRANSFER_ENCODING, UPGRADE},
     HeaderValue, Method as HttpMethod, Uri,
 };
+use http_body_util::combinators::BoxBody;
 use hyper::{
-    body::Body,
-    server::{conn::AddrStream, Server},
-    service, Client, Request, Response,
+    body::{Bytes, Incoming},
+    service, Request, Response,
 };
+use hyper_hickory::{TokioHickoryHttpConnector, TokioHickoryResolver};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
-use hyper_trust_dns::{TrustDnsHttpConnector, TrustDnsResolver};
+use hyper_util::{
+    client::legacy::Client,
+    rt::{TokioExecutor, TokioIo},
+    server::conn::auto::Builder,
+};
 use ratelimiter_map::RatelimiterMap;
 use std::{
     convert::{Infallible, TryFrom},
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
+    pin::pin,
     str::FromStr,
     sync::Arc,
 };
+use tokio::{net::TcpListener, task::JoinSet};
 use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::EnvFilter;
 use twilight_http_ratelimiting::{
@@ -37,6 +44,8 @@ use std::time::Instant;
 
 #[cfg(feature = "expose-metrics")]
 use http::header::CONTENT_TYPE;
+#[cfg(feature = "expose-metrics")]
+use http_body_util::{BodyExt, Full};
 #[cfg(feature = "expose-metrics")]
 use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
@@ -67,7 +76,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
 
     let https_connector = {
-        let mut http_connector = TrustDnsResolver::default().into_http_connector();
+        let mut http_connector = TokioHickoryResolver::default().into_http_connector();
         http_connector.enforce_http(false);
 
         let builder = HttpsConnectorBuilder::new()
@@ -82,7 +91,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let client: Client<_, Body> = Client::builder().build(https_connector);
+    let client: Client<_, Incoming> = Client::builder(TokioExecutor::new()).build(https_connector);
     let ratelimiter_map = Arc::new(RatelimiterMap::new(env::var("DISCORD_TOKEN")?));
 
     let address = SocketAddr::from((host, port));
@@ -104,66 +113,87 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .expect("Failed to create metrics receiver!");
     }
 
-    // The closure inside `make_service_fn` is run for each connection,
-    // creating a 'service' to handle requests for that specific connection.
-    let service = service::make_service_fn(move |addr: &AddrStream| {
-        trace!("Connection from: {:?}", addr);
-        let ratelimiter_map = ratelimiter_map.clone();
-        // Cloning a hyper client is fairly cheap by design
-        let client = client.clone();
-
-        #[cfg(feature = "expose-metrics")]
-        let handle = handle.clone();
-
-        async move {
-            Ok::<_, Infallible>(service::service_fn(move |incoming: Request<Body>| {
-                let token = incoming
-                    .headers()
-                    .get("authorization")
-                    .and_then(|value| value.to_str().ok());
-                let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
-                let client = client.clone();
-
-                #[cfg(feature = "expose-metrics")]
-                {
-                    let handle = handle.clone();
-
-                    async move {
-                        Ok::<_, Infallible>({
-                            if incoming.uri().path() == "/metrics" {
-                                handle_metrics(handle)
-                            } else {
-                                handle_request(client, ratelimiter, token, incoming)
-                                    .await
-                                    .unwrap_or_else(|err| err.as_response())
-                            }
-                        })
-                    }
-                }
-
-                #[cfg(not(feature = "expose-metrics"))]
-                {
-                    async move {
-                        Ok::<_, Infallible>(
-                            handle_request(client, ratelimiter, token, incoming)
-                                .await
-                                .unwrap_or_else(|err| err.as_response()),
-                        )
-                    }
-                }
-            }))
-        }
-    });
-
-    let server = Server::bind(&address).serve(service);
-
-    let graceful = server.with_graceful_shutdown(shutdown_signal());
+    let listener = TcpListener::bind(&address).await?;
+    let mut shutdown_signal = pin!(shutdown_signal());
 
     info!("Listening on http://{}", address);
 
-    if let Err(why) = graceful.await {
-        error!("Fatal server error: {}", why);
+    let mut tasks = JoinSet::new();
+
+    loop {
+        tokio::select! {
+            conn = listener.accept() => {
+                let Ok((stream, addr)) = conn else {
+                    error!("Failed to accept connection");
+                    continue;
+                };
+
+
+                let ratelimiter_map = ratelimiter_map.clone();
+                // Cloning a hyper client is fairly cheap by design
+                let client = client.clone();
+
+                #[cfg(feature = "expose-metrics")]
+                let handle = handle.clone();
+
+                tasks.spawn(async move {
+                    trace!("Connection from: {:?}", addr);
+
+                    let service_fn = service::service_fn(move |incoming: Request<Incoming>| {
+                        let token = incoming
+                            .headers()
+                            .get("authorization")
+                            .and_then(|value| value.to_str().ok());
+                        let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
+                        let client = client.clone();
+
+                        #[cfg(feature = "expose-metrics")]
+                        {
+                            let handle = handle.clone();
+
+                            async move {
+                                Ok::<_, Infallible>({
+                                    if incoming.uri().path() == "/metrics" {
+                                        handle_metrics(handle)
+                                    } else {
+                                        handle_request(client, ratelimiter, token, incoming)
+                                            .await
+                                            .unwrap_or_else(|err| err.as_response())
+                                    }
+                                })
+                            }
+                        }
+
+                        #[cfg(not(feature = "expose-metrics"))]
+                        {
+                            async move {
+                                Ok::<_, Infallible>(
+                                    handle_request(client, ratelimiter, token, incoming)
+                                        .await
+                                        .unwrap_or_else(|err| err.as_response()),
+                                )
+                            }
+                        }
+                    });
+
+                    let result = Builder::new(TokioExecutor::new())
+                        .serve_connection(TokioIo::new(stream), service_fn)
+                        .await;
+
+                    if let Err(e) = result {
+                        error!("Error serving {addr}: {e}");
+                    }
+                });
+            },
+            _ = shutdown_signal.as_mut() => {
+                drop(listener);
+                info!("Received shutdown signal, starting shutdown");
+                break;
+            }
+        }
     }
+
+    while let Some(_) = tasks.join_next().await {}
 
     Ok(())
 }
@@ -288,11 +318,11 @@ fn normalize_path(request_path: &str) -> (&str, &str) {
 }
 
 async fn handle_request(
-    client: Client<HttpsConnector<TrustDnsHttpConnector>, Body>,
+    client: Client<HttpsConnector<TokioHickoryHttpConnector>, Incoming>,
     ratelimiter: InMemoryRatelimiter,
     token: String,
-    mut request: Request<Body>,
-) -> Result<Response<Body>, RequestError> {
+    mut request: Request<Incoming>,
+) -> Result<Response<BoxBody<Bytes, hyper::Error>>, RequestError> {
     trace!("Incoming request: {:?}", request);
 
     let (method, m) = match *request.method() {
@@ -409,17 +439,23 @@ async fn handle_request(
 
     debug!("{} {} ({}): {}", m, p, request_path, status);
 
+    let (parts, body) = resp.into_parts();
+    let boxed_body = BoxBody::new(body);
+    let resp = Response::from_parts(parts, boxed_body);
+
     Ok(resp)
 }
 
 #[cfg(feature = "expose-metrics")]
-fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<Body> {
+fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<BoxBody<Bytes, hyper::Error>> {
     Response::builder()
         .header(
             CONTENT_TYPE,
             HeaderValue::from_static("text/plain; version=0.0.4"),
         )
-        .body(Body::from(handle.render()))
+        .body(BoxBody::new(
+            Full::from(handle.render()).map_err(|_| unreachable!()),
+        ))
         .unwrap()
 }
 

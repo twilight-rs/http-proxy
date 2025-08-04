@@ -1,5 +1,7 @@
 use http::{uri::InvalidUri, Method, Response};
-use hyper::{Body, Error as HyperError};
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use hyper::body::Bytes;
+use hyper_util::client::legacy::Error as HyperUtilError;
 use std::{
     error::Error,
     fmt::{Display, Formatter, Result as FmtResult},
@@ -29,13 +31,13 @@ pub enum RequestError {
         source: InvalidUri,
     },
     RequestIssue {
-        source: HyperError,
+        source: HyperUtilError,
     },
 }
 
 impl RequestError {
-    pub fn as_response(&self) -> Response<Body> {
-        let (status_code, body) = match self {
+    pub fn as_response(&self) -> Response<BoxBody<Bytes, hyper::Error>> {
+        let (status_code, body_incoming) = match self {
             RequestError::AcquiringTicket { .. } => (500, ACQUIRING_TICKET_FAILED_MSG),
             RequestError::InvalidURI { .. } => (500, INVALID_URI_MSG),
             RequestError::InvalidMethod { .. } => (501, INVALID_METHOD_MSG),
@@ -45,7 +47,9 @@ impl RequestError {
 
         Response::builder()
             .status(status_code)
-            .body(Body::from(body))
+            .body(BoxBody::new(
+                Full::from(body_incoming).map_err(|_| unreachable!()),
+            ))
             .unwrap()
     }
 }
