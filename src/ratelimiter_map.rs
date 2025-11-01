@@ -2,8 +2,6 @@ use crate::expiring_lru::{Builder, ExpiringLru};
 use tokio::time::Duration;
 use twilight_http_ratelimiting::InMemoryRatelimiter;
 
-use crate::parse_env;
-
 pub struct RatelimiterMap {
     default: InMemoryRatelimiter,
     default_token: String,
@@ -11,7 +9,7 @@ pub struct RatelimiterMap {
 }
 
 impl RatelimiterMap {
-    pub fn new(mut default_token: String) -> Self {
+    pub fn new(mut default_token: String, timeout: Duration, max_size: Option<usize>) -> Self {
         let is_bot = default_token.starts_with("Bot ");
         let is_bearer = default_token.starts_with("Bearer ");
 
@@ -21,11 +19,9 @@ impl RatelimiterMap {
             default_token.insert_str(0, "Bot ");
         }
 
-        let expiration = Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT").unwrap_or(3600));
+        let mut builder = Builder::new().expiration(timeout);
 
-        let mut builder = Builder::new().expiration(expiration);
-
-        if let Some(max_size) = parse_env("CLIENT_CACHE_MAX_SIZE") {
+        if let Some(max_size) = max_size {
             builder = builder.max_size(max_size);
         }
 

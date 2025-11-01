@@ -25,13 +25,14 @@ use std::{
     convert::Infallible,
     env,
     error::Error,
-    net::{IpAddr, SocketAddr},
+    net::{Ipv4Addr, SocketAddr},
     pin::pin,
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 use tokio::{net::TcpListener, task::JoinSet};
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 use twilight_http_ratelimiting::{
     InMemoryRatelimiter, Method, Path, RatelimitHeaders, Ratelimiter,
 };
@@ -50,11 +51,7 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 #[cfg(feature = "metrics")]
 use metrics_util::MetricKindMask;
 #[cfg(feature = "metrics")]
-use std::{
-    borrow::Cow,
-    sync::LazyLock,
-    time::{Duration, Instant},
-};
+use std::{borrow::Cow, sync::LazyLock, time::Instant};
 
 #[cfg(feature = "metrics")]
 static METRIC_KEY: LazyLock<Cow<str>> = LazyLock::new(|| {
@@ -65,9 +62,8 @@ static METRIC_KEY: LazyLock<Cow<str>> = LazyLock::new(|| {
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
-    let host_raw = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
-    let host = IpAddr::from_str(&host_raw)?;
-    let port = env::var("PORT").unwrap_or_else(|_| "80".into()).parse()?;
+    let host = parse_env("HOST")?.unwrap_or(Ipv4Addr::UNSPECIFIED);
+    let port = parse_env("PORT")?.unwrap_or(80);
 
     let https_connector = {
         let mut http_connector = TokioHickoryResolver::default().into_http_connector();
@@ -78,7 +74,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .https_only()
             .enable_http1();
 
-        if env::var("DISABLE_HTTP2").is_ok() {
+        if env::var_os("DISABLE_HTTP2").is_some() {
             builder.wrap_connector(http_connector)
         } else {
             builder.enable_http2().wrap_connector(http_connector)
@@ -86,7 +82,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let client: Client<_, Incoming> = Client::builder(TokioExecutor::new()).build(https_connector);
-    let ratelimiter_map = Arc::new(RatelimiterMap::new(env::var("DISCORD_TOKEN")?));
+    let ratelimiter_map = Arc::new(RatelimiterMap::new(
+        env::var("DISCORD_TOKEN")?,
+        Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT")?.unwrap_or(3600)),
+        parse_env("CLIENT_CACHE_MAX_SIZE")?,
+    ));
 
     let address = SocketAddr::from((host, port));
 
@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "metrics")]
     {
-        let timeout = parse_env("METRIC_TIMEOUT").unwrap_or(300);
+        let timeout = parse_env("METRIC_TIMEOUT")?.unwrap_or(300);
         let recorder = PrometheusBuilder::new()
             .idle_timeout(
                 MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM,
@@ -452,19 +452,17 @@ fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<BoxBody<Bytes, hype
         .unwrap()
 }
 
-pub fn parse_env<T: FromStr>(key: &str) -> Option<T> {
-    env::var_os(key).and_then(|value| match value.into_string() {
-        Ok(s) => {
-            if let Ok(t) = s.parse() {
-                Some(t)
-            } else {
-                warn!("Unable to parse {}, proceeding with defaults", key);
-                None
-            }
-        }
-        Err(s) => {
-            warn!("{} is not UTF-8: {:?}", key, s);
-            None
-        }
-    })
+fn parse_env<T>(key: &str) -> Result<Option<T>, Box<dyn Error>>
+where
+    T: FromStr,
+    <T as FromStr>::Err: Error + 'static,
+{
+    match env::var(key) {
+        Ok(s) => match s.parse() {
+            Ok(v) => Ok(Some(v)),
+            Err(e) => Err(e.into()),
+        },
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(e @ env::VarError::NotUnicode(_)) => Err(e.into()),
+    }
 }
