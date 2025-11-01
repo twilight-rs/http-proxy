@@ -39,24 +39,24 @@ use twilight_http_ratelimiting::{
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
 
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 use http::header::CONTENT_TYPE;
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 use http_body_util::{BodyExt, Full};
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 use metrics::histogram;
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 use metrics_util::MetricKindMask;
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 use std::{
     borrow::Cow,
     sync::LazyLock,
     time::{Duration, Instant},
 };
 
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 static METRIC_KEY: LazyLock<Cow<str>> = LazyLock::new(|| {
     env::var("METRIC_KEY").map_or(Cow::Borrowed("twilight_http_proxy"), Cow::Owned)
 });
@@ -90,10 +90,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let address = SocketAddr::from((host, port));
 
-    #[cfg(feature = "expose-metrics")]
+    #[cfg(feature = "metrics")]
     let handle: Arc<PrometheusHandle>;
 
-    #[cfg(feature = "expose-metrics")]
+    #[cfg(feature = "metrics")]
     {
         let timeout = parse_env("METRIC_TIMEOUT").unwrap_or(300);
         let recorder = PrometheusBuilder::new()
@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 // Cloning a hyper client is fairly cheap by design
                 let client = client.clone();
 
-                #[cfg(feature = "expose-metrics")]
+                #[cfg(feature = "metrics")]
                 let handle = handle.clone();
 
                 tasks.spawn(async move {
@@ -141,7 +141,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
                         let client = client.clone();
 
-                        #[cfg(feature = "expose-metrics")]
+                        #[cfg(feature = "metrics")]
                         {
                             let handle = handle.clone();
 
@@ -158,7 +158,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
 
-                        #[cfg(not(feature = "expose-metrics"))]
+                        #[cfg(not(feature = "metrics"))]
                         {
                             async move {
                                 Ok::<_, Infallible>(
@@ -390,7 +390,7 @@ async fn handle_request(
     };
     *request.uri_mut() = uri;
 
-    #[cfg(feature = "expose-metrics")]
+    #[cfg(feature = "metrics")]
     let start = Instant::now();
 
     let resp = match client.request(request).await {
@@ -412,13 +412,13 @@ async fn handle_request(
         error!("Error when sending ratelimit headers to ratelimiter");
     };
 
-    #[cfg(feature = "expose-metrics")]
+    #[cfg(feature = "metrics")]
     let end = Instant::now();
 
     trace!("Response: {:?}", resp);
 
     let status = resp.status();
-    #[cfg(feature = "expose-metrics")]
+    #[cfg(feature = "metrics")]
     {
         let scope = resp
             .headers()
@@ -439,7 +439,7 @@ async fn handle_request(
     Ok(resp)
 }
 
-#[cfg(feature = "expose-metrics")]
+#[cfg(feature = "metrics")]
 fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<BoxBody<Bytes, hyper::Error>> {
     Response::builder()
         .header(

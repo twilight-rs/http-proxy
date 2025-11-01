@@ -115,11 +115,10 @@ setting `DISABLE_HTTP2` to any value when running the proxy.
 
 ## Prometheus metrics
 
-The HTTP proxy can expose prometheus metrics when compiled with the
-`expose-metrics` feature. These metrics are then available on the `/metrics`
-endpoint.
-You can set the metrics key used for the histogram data by setting the
-`METRIC_KEY` environment variable.
+The HTTP proxy can expose prometheus metrics when compiled with the `metrics`
+feature. These metrics are then available on the `/metrics` endpoint. You can
+set the metrics key used for the histogram data by setting the `METRIC_KEY`
+environment variable.
 
 The exported histogram includes timing percentiles, response status codes,
 request path and request method. Calls to the metrics endpoint itself are not

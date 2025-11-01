@@ -18,13 +18,13 @@ jobs:
             features: ""
             image: ubuntu-latest
           - tag: metrics-amd64
-            features: expose-metrics
+            features: metrics
             image: ubuntu-latest
           - tag: armv8
             features: ""
             image: ubuntu-24.04-arm
           - tag: metrics-armv8
-            features: expose-metrics
+            features: metrics
             image: ubuntu-24.04-arm
 
     runs-on: ${{ matrix.image }}

@@ -18,7 +18,6 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 twilight-http-ratelimiting = { version = "0.16.0" }
 
-# Only used by the `expose-metrics` feature.
 metrics = { version = "0.24", optional = true }
 metrics-exporter-prometheus = { version = "0.17", default-features = false, optional = true }
 metrics-util = { version = "0.20", optional = true }
@@ -27,7 +26,7 @@ metrics-util = { version = "0.20", optional = true }
 tokio = { version = "1.43", features = ["test-util"] }
 
 [features]
-expose-metrics = ["metrics", "metrics-exporter-prometheus", "metrics-util"]
+metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "dep:metrics-util"]
 
 [profile.release]
 codegen-units = 1
