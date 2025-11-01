@@ -1,8 +1,8 @@
-use dashmap::{mapref::one::Ref, DashMap};
+use dashmap::{DashMap, mapref::one::Ref};
 use futures_util::StreamExt;
 use std::{borrow::Borrow, hash::Hash, marker::PhantomData, ops::Deref, sync::Arc, time::Duration};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio_util::time::{delay_queue::Key, DelayQueue};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
+use tokio_util::time::{DelayQueue, delay_queue::Key};
 use tracing::debug;
 
 pub struct Entry<V> {
@@ -200,7 +200,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::Builder;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     #[tokio::test(start_paused = true)]
     async fn test_lru() {

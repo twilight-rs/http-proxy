@@ -1,5 +1,5 @@
-use http::{uri::InvalidUri, Method, Response};
-use http_body_util::{combinators::BoxBody, BodyExt, Full};
+use http::{Method, Response, uri::InvalidUri};
+use http_body_util::{BodyExt, Full, combinators::BoxBody};
 use hyper::body::Bytes;
 use hyper_util::client::legacy::Error as HyperUtilError;
 use std::{

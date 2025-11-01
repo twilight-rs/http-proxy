@@ -4,13 +4,14 @@ mod ratelimiter_map;
 
 use error::RequestError;
 use http::{
-    header::{AUTHORIZATION, CONNECTION, HOST, TRANSFER_ENCODING, UPGRADE},
     HeaderValue, Method as HttpMethod, Uri,
+    header::{AUTHORIZATION, CONNECTION, HOST, TRANSFER_ENCODING, UPGRADE},
 };
 use http_body_util::combinators::BoxBody;
 use hyper::{
+    Request, Response,
     body::{Bytes, Incoming},
-    service, Request, Response,
+    service,
 };
 use hyper_hickory::{TokioHickoryHttpConnector, TokioHickoryResolver};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
@@ -21,7 +22,7 @@ use hyper_util::{
 };
 use ratelimiter_map::RatelimiterMap;
 use std::{
-    convert::{Infallible, TryFrom},
+    convert::Infallible,
     env,
     error::Error,
     net::{IpAddr, SocketAddr},
@@ -37,17 +38,12 @@ use twilight_http_ratelimiting::{
 };
 
 #[cfg(unix)]
-use tokio::signal::unix::{signal, SignalKind};
-
-#[cfg(feature = "expose-metrics")]
-use std::time::Instant;
+use tokio::signal::unix::{SignalKind, signal};
 
 #[cfg(feature = "expose-metrics")]
 use http::header::CONTENT_TYPE;
 #[cfg(feature = "expose-metrics")]
 use http_body_util::{BodyExt, Full};
-#[cfg(feature = "expose-metrics")]
-use lazy_static::lazy_static;
 #[cfg(feature = "expose-metrics")]
 use metrics::histogram;
 #[cfg(feature = "expose-metrics")]
@@ -55,13 +51,16 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 #[cfg(feature = "expose-metrics")]
 use metrics_util::MetricKindMask;
 #[cfg(feature = "expose-metrics")]
-use std::time::Duration;
+use std::{
+    borrow::Cow,
+    sync::LazyLock,
+    time::{Duration, Instant},
+};
 
 #[cfg(feature = "expose-metrics")]
-lazy_static! {
-    static ref METRIC_KEY: String =
-        env::var("METRIC_KEY").unwrap_or_else(|_| "twilight_http_proxy".into());
-}
+static METRIC_KEY: LazyLock<Cow<str>> = LazyLock::new(|| {
+    env::var("METRIC_KEY").map_or(Cow::Borrowed("twilight_http_proxy"), Cow::Owned)
+});
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -193,7 +192,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    while let Some(_) = tasks.join_next().await {}
+    while tasks.join_next().await.is_some() {}
 
     Ok(())
 }
@@ -302,14 +301,13 @@ fn path_name(path: &Path) -> &'static str {
 
 fn normalize_path(request_path: &str) -> (&str, &str) {
     if let Some(trimmed_path) = request_path.strip_prefix("/api") {
-        if let Some(maybe_api_version) = trimmed_path.split('/').nth(1) {
-            if let Some(version_number) = maybe_api_version.strip_prefix('v') {
-                if version_number.parse::<u8>().is_ok() {
-                    let len = "/api/v".len() + version_number.len();
-                    return (&request_path[..len], &request_path[len..]);
-                };
-            };
-        }
+        if let Some(maybe_api_version) = trimmed_path.split('/').nth(1)
+            && let Some(version_number) = maybe_api_version.strip_prefix('v')
+            && version_number.parse::<u8>().is_ok()
+        {
+            let len = "/api/v".len() + version_number.len();
+            return (&request_path[..len], &request_path[len..]);
+        };
 
         ("/api", trimmed_path)
     } else {
@@ -433,7 +431,7 @@ async fn handle_request(
             .and_then(|header| header.to_str().ok())
             .unwrap_or("")
             .to_string();
-        histogram!(METRIC_KEY.as_str(), "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope)
+        histogram!(METRIC_KEY.as_ref(), "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope)
             .record(end - start);
     }
 
