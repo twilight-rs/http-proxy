@@ -1520,11 +1520,13 @@ dependencies = [
 
 [[package]]
 name = "twilight-http-ratelimiting"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a36945d949920d6bb6aef30547e06ea645eefaa5575a14f56da608bf09d07ec8"
+checksum = "f3c0fa6e3578e0f6dc4636eed55e3c0dd51b5898de2b7200f7fec025656c1148"
 dependencies = [
+ "hashbrown 0.16.0",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

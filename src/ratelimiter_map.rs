@@ -1,11 +1,11 @@
 use crate::expiring_lru::{Builder, ExpiringLru};
 use tokio::time::Duration;
-use twilight_http_ratelimiting::InMemoryRatelimiter;
+use twilight_http_ratelimiting::RateLimiter;
 
 pub struct RatelimiterMap {
-    default: InMemoryRatelimiter,
+    default: RateLimiter,
     default_token: String,
-    inner: ExpiringLru<String, InMemoryRatelimiter>,
+    inner: ExpiringLru<String, RateLimiter>,
 }
 
 impl RatelimiterMap {
@@ -27,7 +27,7 @@ impl RatelimiterMap {
 
         let inner = builder.build();
 
-        let default = InMemoryRatelimiter::new();
+        let default = RateLimiter::default();
 
         Self {
             default,
@@ -36,14 +36,14 @@ impl RatelimiterMap {
         }
     }
 
-    pub fn get_or_insert(&self, token: Option<&str>) -> (InMemoryRatelimiter, String) {
+    pub fn get_or_insert(&self, token: Option<&str>) -> (RateLimiter, String) {
         if let Some(token) = token {
             if token == self.default_token {
                 (self.default.clone(), self.default_token.clone())
             } else if let Some(entry) = self.inner.get(token) {
                 (entry.value().clone(), token.to_string())
             } else {
-                let ratelimiter = InMemoryRatelimiter::new();
+                let ratelimiter = RateLimiter::default();
 
                 self.inner.insert(token.to_string(), ratelimiter.clone());
 

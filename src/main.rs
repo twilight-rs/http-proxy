@@ -3,7 +3,7 @@ mod expiring_lru;
 mod ratelimiter_map;
 
 use error::RequestError;
-use http::{HeaderValue, Method as HttpMethod, Uri, header};
+use http::{HeaderMap, HeaderValue, Method as HttpMethod, Uri, header};
 use http_body_util::combinators::BoxBody;
 use hyper::{
     Request, Response,
@@ -26,13 +26,11 @@ use std::{
     pin::pin,
     str::FromStr,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{net::TcpListener, task::JoinSet};
-use tracing::{debug, error, info, trace};
-use twilight_http_ratelimiting::{
-    InMemoryRatelimiter, Method, Path, RatelimitHeaders, Ratelimiter,
-};
+use tracing::{error, info, trace};
+use twilight_http_ratelimiting::{Endpoint, Method, RateLimitHeaders, RateLimiter};
 
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
@@ -46,7 +44,7 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 #[cfg(feature = "metrics")]
 use metrics_util::MetricKindMask;
 #[cfg(feature = "metrics")]
-use std::{borrow::Cow, sync::LazyLock, time::Instant};
+use std::{borrow::Cow, sync::LazyLock};
 
 #[cfg(feature = "metrics")]
 static METRIC_KEY: LazyLock<Cow<str>> = LazyLock::new(|| {
@@ -205,152 +203,41 @@ async fn shutdown_signal() {
     };
 }
 
-fn path_name(path: &Path) -> &'static str {
-    match path {
-        Path::ApplicationCommand(..) => "Application commands",
-        Path::ApplicationCommandId(..) => "Application command",
-        Path::ApplicationGuildCommand(..) => "Application commands in guild",
-        Path::ApplicationGuildCommandId(..) => "Application command in guild",
-        Path::ChannelsId(..) => "Channel",
-        Path::ChannelsIdFollowers(..) => "Channel followers",
-        Path::ChannelsIdInvites(..) => "Channel invite",
-        Path::ChannelsIdMessages(..) | Path::ChannelsIdMessagesId(..) => "Channel message",
-        Path::ChannelsIdMessagesBulkDelete(..) => "Bulk delete message",
-        Path::ChannelsIdMessagesIdCrosspost(..) => "Crosspost message",
-        Path::ChannelsIdMessagesIdReactions(..) => "Message reaction",
-        Path::ChannelsIdMessagesIdReactionsUserIdType(..) => "Message reaction for user",
-        Path::ChannelsIdMessagesIdThreads(..) => "Threads of a specific message",
-        Path::ChannelsIdPermissionsOverwriteId(..) => "Channel permission override",
-        Path::ChannelsIdPins(..) => "Channel pins",
-        Path::ChannelsIdPinsMessageId(..) => "Specific channel pin",
-        Path::ChannelsIdRecipients(..) => "Channel recipients",
-        Path::ChannelsIdThreadMembers(..) => "Thread members",
-        Path::ChannelsIdThreadMembersId(..) => "Thread member",
-        Path::ChannelsIdThreads(..) => "Channel threads",
-        Path::ChannelsIdTyping(..) => "Typing indicator",
-        Path::ChannelsIdWebhooks(..) | Path::WebhooksId(..) => "Webhook",
-        Path::Gateway => "Gateway",
-        Path::GatewayBot => "Gateway bot info",
-        Path::Guilds => "Guilds",
-        Path::GuildsId(..) => "Guild",
-        Path::GuildsIdAuditLogs(..) => "Guild audit logs",
-        Path::GuildsIdAutoModerationRules(..) => "Guild automoderation rules",
-        Path::GuildsIdAutoModerationRulesId(..) => "Guild automoderation rule",
-        Path::GuildsIdBans(..) => "Guild bans",
-        Path::GuildsIdBansId(..) => "Specific guild ban",
-        Path::GuildsIdBansUserId(..) => "Guild ban for user",
-        Path::GuildsIdChannels(..) => "Guild channel",
-        Path::GuildsIdEmojis(..) => "Guild emoji",
-        Path::GuildsIdEmojisId(..) => "Specific guild emoji",
-        Path::GuildsIdIntegrations(..) => "Guild integrations",
-        Path::GuildsIdIntegrationsId(..) => "Specific guild integration",
-        Path::GuildsIdIntegrationsIdSync(..) => "Sync guild integration",
-        Path::GuildsIdInvites(..) => "Guild invites",
-        Path::GuildsIdMembers(..) => "Guild members",
-        Path::GuildsIdMembersId(..) => "Specific guild member",
-        Path::GuildsIdMembersIdRolesId(..) => "Guild member role",
-        Path::GuildsIdMembersMeNick(..) => "Modify own nickname",
-        Path::GuildsIdMembersSearch(..) => "Search guild members",
-        Path::GuildsIdMfa(..) => "Guild MFA setting",
-        Path::GuildsIdPreview(..) => "Guild preview",
-        Path::GuildsIdPrune(..) => "Guild prune",
-        Path::GuildsIdRegions(..) => "Guild region",
-        Path::GuildsIdRoles(..) => "Guild roles",
-        Path::GuildsIdRolesId(..) => "Specific guild role",
-        Path::GuildsIdScheduledEvents(..) => "Scheduled events in guild",
-        Path::GuildsIdScheduledEventsId(..) => "Scheduled event in guild",
-        Path::GuildsIdScheduledEventsIdUsers(..) => "Users of a scheduled event",
-        Path::GuildsIdStickers(..) => "Guild stickers",
-        Path::GuildsIdTemplates(..) => "Guild templates",
-        Path::GuildsIdTemplatesCode(..) => "Specific guild template",
-        Path::GuildsIdThreads(..) => "Guild threads",
-        Path::GuildsIdVanityUrl(..) => "Guild vanity invite",
-        Path::GuildsIdVoiceStates(..) => "Guild voice states",
-        Path::GuildsIdWebhooks(..) => "Guild webhooks",
-        Path::GuildsIdWelcomeScreen(..) => "Guild welcome screen",
-        Path::GuildsIdWidget(..) => "Guild widget",
-        Path::GuildsTemplatesCode(..) => "Specific guild template",
-        Path::InteractionCallback(..) => "Interaction callback",
-        Path::InvitesCode => "Invite info",
-        Path::OauthApplicationsMe => "Current application info",
-        Path::StageInstances => "Stage instances",
-        Path::StickerPacks => "Sticker packs",
-        Path::Stickers => "Stickers",
-        Path::UsersId => "User info",
-        Path::UsersIdChannels => "User channels",
-        Path::UsersIdConnections => "User connections",
-        Path::UsersIdGuilds => "User in guild",
-        Path::UsersIdGuildsId => "Guild from user",
-        Path::UsersIdGuildsIdMember => "Member of a guild",
-        Path::VoiceRegions => "Voice region list",
-        Path::WebhooksIdToken(..) => "Webhook",
-        Path::WebhooksIdTokenMessagesId(..) => "Specific webhook message",
-        _ => "Unknown path!",
-    }
-}
-
-fn normalize_path(request_path: &str) -> (&str, &str) {
-    if let Some(trimmed_path) = request_path.strip_prefix("/api") {
-        if let Some(maybe_api_version) = trimmed_path.split('/').nth(1)
-            && let Some(version_number) = maybe_api_version.strip_prefix('v')
-            && version_number.parse::<u8>().is_ok()
-        {
-            let len = "/api/v".len() + version_number.len();
-            return (&request_path[..len], &request_path[len..]);
-        };
-
-        ("/api", trimmed_path)
-    } else {
-        ("/api", request_path)
-    }
-}
-
 async fn handle_request(
     client: Client<HttpsConnector<TokioHickoryHttpConnector>, Incoming>,
-    ratelimiter: InMemoryRatelimiter,
+    ratelimiter: RateLimiter,
     token: String,
     mut request: Request<Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>, RequestError> {
     trace!("Incoming request: {:?}", request);
 
-    let (method, m) = match *request.method() {
-        HttpMethod::DELETE => (Method::Delete, "DELETE"),
-        HttpMethod::GET => (Method::Get, "GET"),
-        HttpMethod::PATCH => (Method::Patch, "PATCH"),
-        HttpMethod::POST => (Method::Post, "POST"),
-        HttpMethod::PUT => (Method::Put, "PUT"),
+    let method = match *request.method() {
+        HttpMethod::DELETE => Method::Delete,
+        HttpMethod::GET => Method::Get,
+        HttpMethod::PATCH => Method::Patch,
+        HttpMethod::POST => Method::Post,
+        HttpMethod::PUT => Method::Put,
         _ => {
-            error!("Unsupported HTTP method in request, {}", request.method());
             return Err(RequestError::InvalidMethod {
                 method: request.into_parts().0.method,
             });
         }
     };
 
-    let request_path = request.uri().path().to_owned();
+    let mut segments = request.uri().path().split("/").skip_while(|item| {
+        matches!(*item, "" | "api")
+            || item
+                .strip_prefix("v")
+                .is_some_and(|s| s.parse::<u8>().is_ok())
+    });
+    let mut path = segments.next().map_or(String::new(), ToOwned::to_owned);
+    segments.for_each(|s| {
+        path.push('/');
+        path.push_str(s);
+    });
+    let endpoint = Endpoint { method, path };
 
-    let (api_path, trimmed_path) = normalize_path(&request_path);
-
-    let path = match Path::try_from((method, trimmed_path)) {
-        Ok(path) => path,
-        Err(e) => {
-            error!(
-                "Failed to parse path for {:?} {}: {:?}",
-                method, trimmed_path, e
-            );
-            return Err(RequestError::InvalidPath { source: e });
-        }
-    };
-
-    let p = path_name(&path);
-
-    let header_sender = match ratelimiter.wait_for_ticket(path).await {
-        Ok(sender) => sender,
-        Err(e) => {
-            error!("Failed to receive ticket for ratelimiting: {:?}", e);
-            return Err(RequestError::AcquiringTicket { source: e });
-        }
-    };
+    let permit = ratelimiter.acquire(endpoint).await;
 
     request.headers_mut().insert(
         header::AUTHORIZATION,
@@ -369,63 +256,49 @@ async fn handle_request(
     request.headers_mut().remove(header::TRANSFER_ENCODING);
     request.headers_mut().remove(header::UPGRADE);
 
-    let mut uri_string = format!("https://discord.com{}{}", api_path, trimmed_path);
+    let prefix = if request.uri().path().starts_with("/api") {
+        ""
+    } else {
+        "/api"
+    };
+    let mut uri_string = format!("https://discord.com{prefix}{}", request.uri().path());
 
     if let Some(query) = request.uri().query() {
         uri_string.push('?');
         uri_string.push_str(query);
     }
 
-    let uri = match Uri::from_str(&uri_string) {
-        Ok(uri) => uri,
-        Err(e) => {
-            error!("Failed to create URI for requesting Discord API: {:?}", e);
-            return Err(RequestError::InvalidURI { source: e });
-        }
-    };
+    let uri = Uri::from_str(&uri_string).expect("assembled from valid uri");
     *request.uri_mut() = uri;
 
     #[cfg(feature = "metrics")]
     let start = Instant::now();
 
-    let resp = match client.request(request).await {
-        Ok(response) => response,
-        Err(e) => {
-            error!("Error when requesting the Discord API: {:?}", e);
-            return Err(RequestError::RequestIssue { source: e });
-        }
-    };
+    let resp = client
+        .request(request)
+        .await
+        .map_err(|source| RequestError::RequestIssue { source })?;
 
-    let ratelimit_headers = RatelimitHeaders::from_pairs(
-        resp.headers()
-            .into_iter()
-            .map(|(k, v)| (k.as_str(), v.as_bytes())),
-    )
-    .ok();
-
-    if header_sender.headers(ratelimit_headers).is_err() {
-        error!("Error when sending ratelimit headers to ratelimiter");
-    };
-
-    #[cfg(feature = "metrics")]
     let end = Instant::now();
+
+    let scope = resp
+        .headers()
+        .get(RateLimitHeaders::SCOPE)
+        .map(HeaderValue::as_bytes);
+    let headers = parse_headers(resp.headers(), scope, end);
+    permit.complete(headers);
 
     trace!("Response: {:?}", resp);
 
-    let status = resp.status();
     #[cfg(feature = "metrics")]
     {
-        let scope = resp
-            .headers()
-            .get("X-RateLimit-Scope")
-            .and_then(|header| header.to_str().ok())
-            .unwrap_or("")
-            .to_string();
-        histogram!(METRIC_KEY.as_ref(), "method"=>m.to_string(), "route"=>p, "status"=>status.to_string(), "scope" => scope)
+        let scope = scope
+            .and_then(|v| String::from_utf8(v.to_owned()).ok())
+            .unwrap_or(String::new());
+        let route = uri_string.split_off("https://discord.com".len());
+        histogram!(METRIC_KEY.as_ref(), "method"=>method.name(), "route"=>route, "status"=>resp.status().to_string(), "scope" => scope)
             .record(end - start);
     }
-
-    debug!("{} {} ({}): {}", m, p, request_path, status);
 
     let (parts, body) = resp.into_parts();
     let boxed_body = BoxBody::new(body);
@@ -445,6 +318,65 @@ fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<BoxBody<Bytes, hype
             Full::from(handle.render()).map_err(|_| unreachable!()),
         ))
         .unwrap()
+}
+
+fn parse_headers(
+    headers: &HeaderMap,
+    scope: Option<&[u8]>,
+    start: Instant,
+) -> Option<RateLimitHeaders> {
+    match scope {
+        Some(b"global") => {
+            info!("globally rate limited");
+
+            None
+        }
+        Some(b"shared") => {
+            let bucket = headers.get(RateLimitHeaders::BUCKET)?.as_bytes().to_vec();
+            let retry_after = headers
+                .get(header::RETRY_AFTER)?
+                .to_str()
+                .ok()?
+                .parse()
+                .ok()?;
+
+            Some(RateLimitHeaders {
+                bucket,
+                limit: 0,
+                remaining: 0,
+                reset_at: start + Duration::from_secs(retry_after),
+            })
+        }
+        Some(b"user") => {
+            let bucket = headers.get(RateLimitHeaders::BUCKET)?.as_bytes().to_vec();
+            let limit = headers
+                .get(RateLimitHeaders::LIMIT)?
+                .to_str()
+                .ok()?
+                .parse()
+                .ok()?;
+            let remaining = headers
+                .get(RateLimitHeaders::REMAINING)?
+                .to_str()
+                .ok()?
+                .parse()
+                .ok()?;
+            let reset_after = headers
+                .get(RateLimitHeaders::RESET_AFTER)?
+                .to_str()
+                .ok()?
+                .parse()
+                .ok()?;
+
+            Some(RateLimitHeaders {
+                bucket,
+                limit,
+                remaining,
+                reset_at: start + Duration::from_secs_f32(reset_after),
+            })
+        }
+        _ => None,
+    }
 }
 
 fn parse_env<T>(key: &str) -> Result<Option<T>, Box<dyn Error>>
