@@ -3,10 +3,7 @@ mod expiring_lru;
 mod ratelimiter_map;
 
 use error::RequestError;
-use http::{
-    HeaderValue, Method as HttpMethod, Uri,
-    header::{AUTHORIZATION, CONNECTION, HOST, TRANSFER_ENCODING, UPGRADE},
-};
+use http::{HeaderValue, Method as HttpMethod, Uri, header};
 use http_body_util::combinators::BoxBody;
 use hyper::{
     Request, Response,
@@ -40,8 +37,6 @@ use twilight_http_ratelimiting::{
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
 
-#[cfg(feature = "metrics")]
-use http::header::CONTENT_TYPE;
 #[cfg(feature = "metrics")]
 use http_body_util::{BodyExt, Full};
 #[cfg(feature = "metrics")]
@@ -358,21 +353,21 @@ async fn handle_request(
     };
 
     request.headers_mut().insert(
-        AUTHORIZATION,
+        header::AUTHORIZATION,
         HeaderValue::from_bytes(token.as_bytes())
             .expect("strings are guaranteed to be valid utf-8"),
     );
     request
         .headers_mut()
-        .insert(HOST, HeaderValue::from_static("discord.com"));
+        .insert(header::HOST, HeaderValue::from_static("discord.com"));
 
     // Remove forbidden HTTP/2 headers
     // https://datatracker.ietf.org/doc/html/rfc7540#section-8.1.2.2
-    request.headers_mut().remove(CONNECTION);
+    request.headers_mut().remove(header::CONNECTION);
     request.headers_mut().remove("keep-alive");
     request.headers_mut().remove("proxy-connection");
-    request.headers_mut().remove(TRANSFER_ENCODING);
-    request.headers_mut().remove(UPGRADE);
+    request.headers_mut().remove(header::TRANSFER_ENCODING);
+    request.headers_mut().remove(header::UPGRADE);
 
     let mut uri_string = format!("https://discord.com{}{}", api_path, trimmed_path);
 
@@ -443,7 +438,7 @@ async fn handle_request(
 fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<BoxBody<Bytes, hyper::Error>> {
     Response::builder()
         .header(
-            CONTENT_TYPE,
+            header::CONTENT_TYPE,
             HeaderValue::from_static("text/plain; version=0.0.4"),
         )
         .body(BoxBody::new(
