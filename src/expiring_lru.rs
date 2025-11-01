@@ -1,6 +1,8 @@
 use dashmap::{DashMap, mapref::one::Ref};
-use futures_util::StreamExt;
-use std::{borrow::Borrow, hash::Hash, marker::PhantomData, ops::Deref, sync::Arc, time::Duration};
+use std::{
+    borrow::Borrow, future::poll_fn, hash::Hash, marker::PhantomData, ops::Deref, sync::Arc,
+    time::Duration,
+};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio_util::time::{DelayQueue, delay_queue::Key};
 use tracing::debug;
@@ -53,7 +55,7 @@ async fn decay_task<K, V>(
 
     loop {
         tokio::select! {
-            Some(key) = queue.next(), if !queue.is_empty() => {
+            Some(key) = poll_fn(|cx| queue.poll_expired(cx)), if !queue.is_empty() => {
                 // An item expired in the queue, remove it from the map
                 debug!("Removing expired entry from ratelimiter decay queue");
                 map.remove(key.get_ref());

@@ -1515,7 +1515,6 @@ name = "twilight-http-proxy"
 version = "0.1.0"
 dependencies = [
  "dashmap",
- "futures-util",
  "http",
  "http-body-util",
  "hyper",
