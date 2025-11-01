@@ -32,7 +32,6 @@ use std::{
 };
 use tokio::{net::TcpListener, task::JoinSet};
 use tracing::{debug, error, info, trace, warn};
-use tracing_subscriber::EnvFilter;
 use twilight_http_ratelimiting::{
     InMemoryRatelimiter, Method, Path, RatelimitHeaders, Ratelimiter,
 };
@@ -64,11 +63,7 @@ static METRIC_KEY: LazyLock<Cow<str>> = LazyLock::new(|| {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    tracing_subscriber::fmt::init();
 
     let host_raw = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let host = IpAddr::from_str(&host_raw)?;
