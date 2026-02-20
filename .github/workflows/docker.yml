@@ -13,21 +13,13 @@ jobs:
 
     strategy:
       matrix:
-        include:
-          - tag: amd64
-            features: ""
-            image: ubuntu-latest
-          - tag: metrics-amd64
-            features: metrics
-            image: ubuntu-latest
-          - tag: armv8
-            features: ""
-            image: ubuntu-24.04-arm
-          - tag: metrics-armv8
-            features: metrics
-            image: ubuntu-24.04-arm
+        arch: [amd64, armv8]
+        features: [metrics, ""]
 
-    runs-on: ${{ matrix.image }}
+    runs-on: ${{ matrix.arch == 'armv8' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+
+    env:
+      TAG: ${{ matrix.features && format('metrics-{0}', matrix.arch) || matrix.arch }}
 
     steps:
       - name: Checkout sources
@@ -42,19 +34,19 @@ jobs:
         run: |
           echo "REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
 
-      - name: Build ${{ matrix.tag }}
+      - name: Build
         run: |
           podman build \
             --format docker \
             --build-arg FEATURES=${{ matrix.features }} \
-            -t http-proxy:${{ matrix.tag }} \
+            -t http-proxy:${TAG} \
             .
 
       - name: Push image
         if: github.ref == 'refs/heads/trunk' && github.event_name != 'pull_request'
         run: |
-          podman tag http-proxy:${{ matrix.tag }} ghcr.io/${REPO}:${{ matrix.tag }}
-          podman push ghcr.io/${REPO}:${{ matrix.tag }}
+          podman tag http-proxy:${TAG} ghcr.io/${REPO}:${TAG}
+          podman push ghcr.io/${REPO}:${TAG}
 
   create-manifest:
     name: Create Docker manifests
