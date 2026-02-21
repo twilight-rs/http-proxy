@@ -22,7 +22,7 @@ use std::{
     convert::Infallible,
     env,
     error::Error,
-    net::{Ipv4Addr, SocketAddr},
+    net::{Ipv4Addr, SocketAddrV4},
     pin::pin,
     str::FromStr,
     sync::Arc,
@@ -56,10 +56,7 @@ static METRIC_KEY: LazyLock<Cow<str>> = LazyLock::new(|| {
 async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
-    let host = parse_env("HOST")?.unwrap_or(Ipv4Addr::UNSPECIFIED);
-    let port = parse_env("PORT")?.unwrap_or(80);
-
-    let https_connector = {
+    let client = {
         let mut http_connector = TokioHickoryResolver::default().into_http_connector();
         http_connector.enforce_http(false);
 
@@ -68,38 +65,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .https_only()
             .enable_http1();
 
-        if env::var_os("DISABLE_HTTP2").is_some() {
+        let https_connector = if env::var_os("DISABLE_HTTP2").is_some() {
             builder.wrap_connector(http_connector)
         } else {
             builder.enable_http2().wrap_connector(http_connector)
-        }
+        };
+
+        Client::builder(TokioExecutor::new()).build(https_connector)
     };
 
-    let client: Client<_, Incoming> = Client::builder(TokioExecutor::new()).build(https_connector);
+    #[cfg(feature = "metrics")]
+    let handle = PrometheusBuilder::new()
+        .idle_timeout(
+            MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM,
+            Some(Duration::from_secs(
+                parse_env("METRIC_TIMEOUT")?.unwrap_or(300),
+            )),
+        )
+        .install_recorder()
+        .expect("installed once");
+
     let ratelimiter_map = Arc::new(RatelimiterMap::new(
         env::var("DISCORD_TOKEN")?,
         Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT")?.unwrap_or(3600)),
         parse_env("CLIENT_CACHE_MAX_SIZE")?,
     ));
 
-    let address = SocketAddr::from((host, port));
-
-    #[cfg(feature = "metrics")]
-    let handle: Arc<PrometheusHandle>;
-
-    #[cfg(feature = "metrics")]
-    {
-        let timeout = parse_env("METRIC_TIMEOUT")?.unwrap_or(300);
-        let recorder = PrometheusBuilder::new()
-            .idle_timeout(
-                MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM,
-                Some(Duration::from_secs(timeout)),
-            )
-            .build_recorder();
-        handle = Arc::new(recorder.handle());
-        metrics::set_global_recorder(Box::new(recorder))
-            .expect("Failed to create metrics receiver!");
-    }
+    let host = parse_env("HOST")?.unwrap_or(Ipv4Addr::UNSPECIFIED);
+    let port = parse_env("PORT")?.unwrap_or(80);
+    let address = SocketAddrV4::new(host, port);
 
     let listener = TcpListener::bind(&address).await?;
     let mut shutdown_signal = pin!(shutdown_signal());
@@ -116,53 +110,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     continue;
                 };
 
-
-                let ratelimiter_map = ratelimiter_map.clone();
-                // Cloning a hyper client is fairly cheap by design
+                let ratelimiter_map = Arc::clone(&ratelimiter_map);
                 let client = client.clone();
-
                 #[cfg(feature = "metrics")]
                 let handle = handle.clone();
 
+                let service_fn = service::service_fn(move |request| {
+                    let token = request
+                        .headers()
+                        .get(header::AUTHORIZATION)
+                        .and_then(|value| value.to_str().ok());
+                    let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
+                    let client = client.clone();
+                    #[cfg(feature = "metrics")]
+                    let handle = handle.clone();
+
+                    async move {
+                        #[cfg(feature = "metrics")]
+                        if request.uri().path() == "/metrics" {
+                            return Ok::<_, Infallible>(handle_metrics(handle));
+                        }
+
+                        Ok::<_, Infallible>(handle_request(client, ratelimiter, token, request)
+                            .await
+                            .unwrap_or_else(|err| err.as_response()))
+                    }
+                });
+
                 tracker.spawn(async move {
                     trace!("Connection from: {:?}", addr);
-
-                    let service_fn = service::service_fn(move |incoming: Request<Incoming>| {
-                        let token = incoming
-                            .headers()
-                            .get("authorization")
-                            .and_then(|value| value.to_str().ok());
-                        let (ratelimiter, token) = ratelimiter_map.get_or_insert(token);
-                        let client = client.clone();
-
-                        #[cfg(feature = "metrics")]
-                        {
-                            let handle = handle.clone();
-
-                            async move {
-                                Ok::<_, Infallible>({
-                                    if incoming.uri().path() == "/metrics" {
-                                        handle_metrics(handle)
-                                    } else {
-                                        handle_request(client, ratelimiter, token, incoming)
-                                            .await
-                                            .unwrap_or_else(|err| err.as_response())
-                                    }
-                                })
-                            }
-                        }
-
-                        #[cfg(not(feature = "metrics"))]
-                        {
-                            async move {
-                                Ok::<_, Infallible>(
-                                    handle_request(client, ratelimiter, token, incoming)
-                                        .await
-                                        .unwrap_or_else(|err| err.as_response()),
-                                )
-                            }
-                        }
-                    });
 
                     let result = Builder::new(TokioExecutor::new())
                         .serve_connection(TokioIo::new(stream), service_fn)
@@ -311,7 +287,7 @@ async fn handle_request(
 }
 
 #[cfg(feature = "metrics")]
-fn handle_metrics(handle: Arc<PrometheusHandle>) -> Response<BoxBody<Bytes, hyper::Error>> {
+fn handle_metrics(handle: PrometheusHandle) -> Response<BoxBody<Bytes, hyper::Error>> {
     Response::builder()
         .header(
             header::CONTENT_TYPE,
@@ -382,10 +358,10 @@ fn parse_headers(
     }
 }
 
-fn parse_env<T>(key: &str) -> Result<Option<T>, Box<dyn Error>>
+fn parse_env<F>(key: &str) -> Result<Option<F>, Box<dyn Error>>
 where
-    T: FromStr,
-    <T as FromStr>::Err: Error + 'static,
+    F: FromStr,
+    <F as FromStr>::Err: Error + 'static,
 {
     match env::var(key) {
         Ok(s) => match s.parse() {
