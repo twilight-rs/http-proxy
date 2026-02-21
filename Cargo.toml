@@ -13,7 +13,7 @@ hyper-rustls = { version = "0.27", default-features = false, features = ["webpki
 hyper-hickory = { version = "0.8", features = ["tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio", "server", "http1", "http2"] }
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "signal"] }
-tokio-util = { version = "0.7.8", default-features = false, features = ["time"] }
+tokio-util = { version = "0.7.8", features = ["rt", "time"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 twilight-http-ratelimiting = "0.17"

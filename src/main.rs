@@ -28,7 +28,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{net::TcpListener, task::JoinSet};
+use tokio::net::TcpListener;
+use tokio_util::task::TaskTracker;
 use tracing::{error, info, trace};
 use twilight_http_ratelimiting::{Endpoint, Method, RateLimitHeaders, RateLimiter};
 
@@ -105,7 +106,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     info!("Listening on http://{}", address);
 
-    let mut tasks = JoinSet::new();
+    let tracker = TaskTracker::new();
 
     loop {
         tokio::select! {
@@ -123,7 +124,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 #[cfg(feature = "metrics")]
                 let handle = handle.clone();
 
-                tasks.spawn(async move {
+                tracker.spawn(async move {
                     trace!("Connection from: {:?}", addr);
 
                     let service_fn = service::service_fn(move |incoming: Request<Incoming>| {
@@ -180,7 +181,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    while tasks.join_next().await.is_some() {}
+    tracker.close();
+    info!("waiting for {} task(s) to finish", tracker.len());
+    tracker.wait().await;
 
     Ok(())
 }
