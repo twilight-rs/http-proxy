@@ -1,11 +1,11 @@
-use crate::expiring_lru::{Builder, ExpiringLru};
+use crate::tlru::{Builder, Tlru};
 use tokio::time::Duration;
 use twilight_http_ratelimiting::RateLimiter;
 
 pub struct RatelimiterMap {
     default: RateLimiter,
     default_token: String,
-    inner: ExpiringLru<String, RateLimiter>,
+    inner: Tlru<String, RateLimiter>,
 }
 
 impl RatelimiterMap {

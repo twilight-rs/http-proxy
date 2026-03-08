@@ -1,6 +1,6 @@
 mod error;
-mod expiring_lru;
 mod ratelimiter_map;
+mod tlru;
 
 use error::RequestError;
 use http::{HeaderMap, HeaderValue, Method as HttpMethod, Uri, header};

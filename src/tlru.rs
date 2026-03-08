@@ -86,7 +86,7 @@ async fn decay_task<K, V>(
                 }
             },
             else => {
-                // Channel has been closed by the other end, i.e. the ExpiringLru has
+                // Channel has been closed by the other end, i.e. the Tlru has
                 // been dropped.
                 break;
             }
@@ -100,13 +100,13 @@ enum TimerUpdate<K, V> {
     RemoveLru,
 }
 
-pub struct ExpiringLru<K, V> {
+pub struct Tlru<K, V> {
     inner: Arc<DashMap<K, Entry<V>>>,
     decay_tx: UnboundedSender<TimerUpdate<K, V>>,
     max_size: Option<usize>,
 }
 
-impl<K, V> ExpiringLru<K, V>
+impl<K, V> Tlru<K, V>
 where
     K: Eq + Hash + Clone + Send + Sync + 'static,
     V: Send + Sync + 'static,
@@ -194,8 +194,8 @@ where
         self
     }
 
-    pub fn build(self) -> ExpiringLru<K, V> {
-        ExpiringLru::new(self.expiration, self.max_size)
+    pub fn build(self) -> Tlru<K, V> {
+        Tlru::new(self.expiration, self.max_size)
     }
 }
 
@@ -205,13 +205,13 @@ mod tests {
     use tokio::time::{Duration, sleep};
 
     #[tokio::test(start_paused = true)]
-    async fn test_lru() {
-        let lru = Builder::new()
+    async fn tlru() {
+        let tlru = Builder::new()
             .expiration(Duration::from_secs(1))
             .max_size(2)
             .build();
 
-        lru.insert(1, 2);
+        tlru.insert(1, 2);
 
         // The actual LRU cache insert is performed in a different
         // task and insert will return pre-emptively after notifying
@@ -223,15 +223,15 @@ mod tests {
         tokio::task::yield_now().await;
 
         {
-            let entry = lru.get(&1).unwrap();
+            let entry = tlru.get(&1).unwrap();
             assert_eq!(entry.value(), &2);
         }
 
         sleep(Duration::from_secs(2)).await;
-        assert!(lru.get(&1).is_none());
+        assert!(tlru.get(&1).is_none());
 
         for i in 2..5 {
-            lru.insert(i, 0);
+            tlru.insert(i, 0);
 
             // If we insert instantly after another,
             // upon inserting 4 it will remove either 2 or 3,
@@ -241,8 +241,8 @@ mod tests {
             sleep(Duration::from_millis(50)).await;
         }
 
-        assert_eq!(lru.len(), 2);
-        assert!(lru.get(&2).is_none());
-        assert!(lru.get(&4).is_some());
+        assert_eq!(tlru.len(), 2);
+        assert!(tlru.get(&2).is_none());
+        assert!(tlru.get(&4).is_some());
     }
 }
