@@ -56,7 +56,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt::init();
 
     let client = {
-        let http_connector = HttpConnector::new();
+        let mut http_connector = HttpConnector::new();
+        http_connector.enforce_http(false);
 
         let builder = HttpsConnectorBuilder::new()
             .with_webpki_roots()
