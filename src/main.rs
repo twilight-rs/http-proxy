@@ -22,6 +22,7 @@ use std::{
     env,
     error::Error,
     net::{Ipv4Addr, SocketAddrV4},
+    num::NonZero,
     pin::pin,
     str::FromStr,
     sync::Arc,
@@ -87,7 +88,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let ratelimiter_map = Arc::new(RatelimiterMap::new(
         env::var("DISCORD_TOKEN")?,
         Duration::from_secs(parse_env("CLIENT_DECAY_TIMEOUT")?.unwrap_or(3600)),
-        parse_env("CLIENT_CACHE_MAX_SIZE")?,
+        parse_env("CLIENT_CACHE_MAX_SIZE")?.unwrap_or(NonZero::<usize>::MAX),
     ));
 
     let host = parse_env("HOST")?.unwrap_or(Ipv4Addr::UNSPECIFIED);

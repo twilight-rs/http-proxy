@@ -1,230 +1,145 @@
-use dashmap::{DashMap, mapref::one::Ref};
 use std::{
-    borrow::Borrow, future::poll_fn, hash::Hash, marker::PhantomData, ops::Deref, sync::Arc,
+    borrow::Borrow,
+    collections::HashMap,
+    future::poll_fn,
+    hash::Hash,
+    num::NonZero,
+    sync::{Arc, Mutex},
+    task::{Context, Poll, ready},
     time::Duration,
 };
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
-use tokio_util::time::{DelayQueue, delay_queue::Key};
-use tracing::debug;
+use tokio::sync::Notify;
+use tokio_util::time::{DelayQueue, delay_queue};
 
-pub struct Entry<V> {
-    inner: V,
-    decay_key: Key,
-}
-
-pub struct EntryRef<'a, K, V>(Ref<'a, K, Entry<V>>);
-
-impl<K, V> EntryRef<'_, K, V>
-where
-    K: Eq + Hash,
-{
-    pub fn value(&self) -> &V {
-        &self.0.value().inner
-    }
-}
-
-impl<K, V> AsRef<V> for EntryRef<'_, K, V>
-where
-    K: Eq + Hash,
-{
-    fn as_ref(&self) -> &V {
-        &self.0.value().inner
-    }
-}
-
-impl<K, V> Deref for EntryRef<'_, K, V>
-where
-    K: Eq + Hash,
-{
-    type Target = V;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0.value().inner
-    }
-}
-
-async fn decay_task<K, V>(
-    map: Arc<DashMap<K, Entry<V>>>,
-    expiration: Duration,
-    mut rx: UnboundedReceiver<TimerUpdate<K, V>>,
-) where
-    K: Eq + Hash + Clone + Send + Sync + 'static,
-    V: Send + Sync + 'static,
-{
-    let mut queue = DelayQueue::new();
-
-    loop {
-        tokio::select! {
-            Some(key) = poll_fn(|cx| queue.poll_expired(cx)), if !queue.is_empty() => {
-                // An item expired in the queue, remove it from the map
-                debug!("Removing expired entry from ratelimiter decay queue");
-                map.remove(key.get_ref());
-            }
-            Some(msg) = rx.recv() => {
-                match msg {
-                    TimerUpdate::Add { key, value } => {
-                        debug!("Adding entry to ratelimiter decay queue");
-                        let decay_key = queue.insert(key.clone(), expiration);
-                        let entry = Entry {
-                            inner: value,
-                            decay_key,
-                        };
-                        map.insert(key, entry);
-                    },
-                    TimerUpdate::Refresh { key } => {
-                        debug!("Refreshing entry in ratelimiter decay queue");
-                        // This will panic if the key is not present, therefore
-                        // we check that in the calling end
-                        queue.reset(&key, expiration);
-                    },
-                    TimerUpdate::RemoveLru => {
-                        debug!("Removing least recently used item from ratelimiter decay queue");
-                        if let Some(expired) = queue.peek().and_then(|key| queue.try_remove(&key)) {
-                            map.remove(expired.get_ref());
-                        }
-                    }
-                }
-            },
-            else => {
-                // Channel has been closed by the other end, i.e. the Tlru has
-                // been dropped.
-                break;
-            }
-        };
-    }
-}
-
-enum TimerUpdate<K, V> {
-    Add { key: K, value: V },
-    Refresh { key: Key },
-    RemoveLru,
-}
-
+/// A time-aware least recently used cache.
+///
+/// Entries are removed once their time-to-use (TTU) expires.
 pub struct Tlru<K, V> {
-    inner: Arc<DashMap<K, Entry<V>>>,
-    decay_tx: UnboundedSender<TimerUpdate<K, V>>,
-    max_size: Option<usize>,
+    cap: NonZero<usize>,
+    inner: Arc<Mutex<TlruInner<K, V>>>,
+    notify: Arc<Notify>,
+    ttu: Duration,
+}
+
+// INVARIANT: both collections contain the same keys.
+struct TlruInner<K, V> {
+    entries: HashMap<K, Entry<V>>,
+    expirations: DelayQueue<K>,
+}
+
+#[derive(Clone)]
+struct Entry<V> {
+    expiration: delay_queue::Key,
+    value: V,
 }
 
 impl<K, V> Tlru<K, V>
 where
-    K: Eq + Hash + Clone + Send + Sync + 'static,
-    V: Send + Sync + 'static,
+    K: Clone + Eq + Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
-    fn new(expiration: Duration, max_size: Option<usize>) -> Self {
-        let inner = Arc::new(DashMap::new());
-        let (decay_tx, decay_rx) = unbounded_channel();
-
-        let this = Self {
-            inner: inner.clone(),
-            decay_tx,
-            max_size,
+    /// Creates an empty `Tlru`.
+    pub fn new(cap: NonZero<usize>, ttu: Duration) -> Self {
+        let inner = TlruInner {
+            entries: HashMap::new(),
+            expirations: DelayQueue::new(),
         };
+        let inner = Arc::new(Mutex::new(inner));
+        let notify = Arc::new(Notify::new());
 
-        tokio::spawn(decay_task(inner, expiration, decay_rx));
+        tokio::spawn(reaper(Arc::clone(&notify), Arc::clone(&inner)));
 
-        this
+        Self {
+            cap,
+            inner,
+            notify,
+            ttu,
+        }
     }
 
+    /// Inserts a key-value pair into the cache.
+    ///
+    /// If the cache is full, the least recently used entry is replaced.
     pub fn insert(&self, key: K, value: V) {
-        match self.max_size {
-            Some(0) => return,
-            Some(max_size) if self.len() >= max_size => {
-                self.remove_lru();
-            }
-            _ => {}
+        let mut guard = self.inner.lock().unwrap();
+        // Notify `reaper` that the cache is non-empty.
+        self.notify.notify_waiters();
+
+        if self.cap.get() == guard.len() {
+            guard.remove_lru();
         }
 
-        _ = self.decay_tx.send(TimerUpdate::Add { key, value });
+        let expiration = guard.expirations.insert(key.clone(), self.ttu);
+        guard.entries.insert(key, Entry { expiration, value });
     }
 
-    pub fn get<Q>(&self, key: &Q) -> Option<EntryRef<'_, K, V>>
+    /// Returns the value corresponding to the key.
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<V>
     where
         K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Eq + Hash,
     {
-        let entry = self.inner.get(key)?;
-        _ = self.decay_tx.send(TimerUpdate::Refresh {
-            key: entry.decay_key,
-        });
+        let mut guard = self.inner.lock().unwrap();
 
-        Some(EntryRef(entry))
-    }
+        let Entry { expiration, value } = guard.entries.get(key)?.clone();
+        guard.expirations.reset(&expiration, self.ttu);
 
-    fn remove_lru(&self) {
-        _ = self.decay_tx.send(TimerUpdate::RemoveLru);
-    }
-
-    pub fn len(&self) -> usize {
-        self.inner.len()
+        Some(value)
     }
 }
 
-pub struct Builder<K, V> {
-    expiration: Duration,
-    max_size: Option<usize>,
-
-    _marker: PhantomData<(K, V)>,
-}
-
-const DEFAULT_EXPIRATION: Duration = Duration::from_secs(3600);
-
-impl<K, V> Builder<K, V>
+impl<K, V> TlruInner<K, V>
 where
-    K: Eq + Hash + Clone + Send + Sync + 'static,
-    V: Send + Sync + 'static,
+    K: Eq + Hash,
 {
-    pub const fn new() -> Self {
-        Self {
-            expiration: DEFAULT_EXPIRATION,
-            max_size: None,
-            _marker: PhantomData,
+    /// Returns the number of entries in the cache.
+    fn len(&self) -> usize {
+        debug_assert_eq!(self.entries.len(), self.expirations.len());
+        self.entries.len()
+    }
+
+    /// Attempts to remove an expired entry.
+    fn poll_expired(&mut self, cx: &mut Context<'_>) -> Poll<Option<V>> {
+        let expired = ready!(self.expirations.poll_expired(cx));
+        let entry = expired.map(|expired| self.entries.remove(expired.get_ref()).unwrap().value);
+
+        Poll::Ready(entry)
+    }
+
+    /// Removes the least recently used entry.
+    fn remove_lru(&mut self) -> Option<V> {
+        let lru = self.expirations.remove(&self.expirations.peek()?);
+        let entry = self.entries.remove(lru.get_ref()).unwrap().value;
+
+        Some(entry)
+    }
+}
+
+async fn reaper<K: Eq + Hash, V>(notify: Arc<Notify>, tlru: Arc<Mutex<TlruInner<K, V>>>) {
+    loop {
+        let expired = poll_fn(|cx| tlru.lock().unwrap().poll_expired(cx)).await;
+
+        if expired.is_none() {
+            // Wait until the cache is non-empty.
+            notify.notified().await;
         }
-    }
-
-    pub const fn expiration(mut self, expiration: Duration) -> Self {
-        self.expiration = expiration;
-
-        self
-    }
-
-    pub const fn max_size(mut self, size: usize) -> Self {
-        self.max_size = Some(size);
-
-        self
-    }
-
-    pub fn build(self) -> Tlru<K, V> {
-        Tlru::new(self.expiration, self.max_size)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Builder;
-    use tokio::time::{Duration, sleep};
+    use super::*;
+    use tokio::time::sleep;
 
     #[tokio::test(start_paused = true)]
     async fn tlru() {
-        let tlru = Builder::new()
-            .expiration(Duration::from_secs(1))
-            .max_size(2)
-            .build();
+        let tlru = Tlru::new(NonZero::new(2).unwrap(), Duration::from_secs(1));
 
         tlru.insert(1, 2);
 
-        // The actual LRU cache insert is performed in a different
-        // task and insert will return pre-emptively after notifying
-        // the task of the insertion. In order to allow the task to run
-        // and receive the insertion message, we have to yield back to the
-        // runtime. The alternative would be making insert asynchronous and
-        // wait on a oneshot channel, but there is no benefit to that
-        // for our usecase.
-        tokio::task::yield_now().await;
-
         {
             let entry = tlru.get(&1).unwrap();
-            assert_eq!(entry.value(), &2);
+            assert_eq!(entry, 2);
         }
 
         sleep(Duration::from_secs(2)).await;
@@ -241,7 +156,7 @@ mod tests {
             sleep(Duration::from_millis(50)).await;
         }
 
-        assert_eq!(tlru.len(), 2);
+        assert_eq!(tlru.inner.lock().unwrap().len(), 2);
         assert!(tlru.get(&2).is_none());
         assert!(tlru.get(&4).is_some());
     }

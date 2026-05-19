@@ -1,4 +1,5 @@
-use crate::tlru::{Builder, Tlru};
+use crate::tlru::Tlru;
+use std::num::NonZero;
 use tokio::time::Duration;
 use twilight_http_ratelimiting::RateLimiter;
 
@@ -9,7 +10,7 @@ pub struct RatelimiterMap {
 }
 
 impl RatelimiterMap {
-    pub fn new(mut default_token: String, timeout: Duration, max_size: Option<usize>) -> Self {
+    pub fn new(mut default_token: String, timeout: Duration, cap: NonZero<usize>) -> Self {
         let is_bot = default_token.starts_with("Bot ");
         let is_bearer = default_token.starts_with("Bearer ");
 
@@ -19,13 +20,7 @@ impl RatelimiterMap {
             default_token.insert_str(0, "Bot ");
         }
 
-        let mut builder = Builder::new().expiration(timeout);
-
-        if let Some(max_size) = max_size {
-            builder = builder.max_size(max_size);
-        }
-
-        let inner = builder.build();
+        let inner = Tlru::new(cap, timeout);
 
         let default = RateLimiter::default();
 
@@ -41,13 +36,13 @@ impl RatelimiterMap {
             if token == self.default_token {
                 (self.default.clone(), self.default_token.clone())
             } else if let Some(entry) = self.inner.get(token) {
-                (entry.value().clone(), token.to_string())
+                (entry, token.to_owned())
             } else {
                 let ratelimiter = RateLimiter::default();
 
-                self.inner.insert(token.to_string(), ratelimiter.clone());
+                self.inner.insert(token.to_owned(), ratelimiter.clone());
 
-                (ratelimiter, token.to_string())
+                (ratelimiter, token.to_owned())
             }
         } else {
             (self.default.clone(), self.default_token.clone())
