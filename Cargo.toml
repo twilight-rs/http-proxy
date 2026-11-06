@@ -21,7 +21,9 @@ metrics-exporter-prometheus = { version = "0.18", default-features = false, opti
 metrics-util = { version = "0.20", optional = true }
 
 [dev-dependencies]
+rustls = { version = "0.23", default-features = false }
 tokio = { version = "1.43", features = ["test-util"] }
+webpki-roots = "1"
 
 [features]
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus", "dep:metrics-util"]
