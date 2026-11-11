@@ -10,32 +10,7 @@ RUN apk upgrade && \
 
 WORKDIR /app
 
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
-
-# We need a source directory so that it builds the dependencies and an empty
-# binary.
-RUN mkdir src/
-RUN echo 'fn main() {}' > ./src/main.rs
-RUN source $HOME/.cargo/env && \
-    cargo build \
-        --release \
-        -Zbuild-std=std,panic_abort \
-        --target="$(uname -m)-unknown-linux-musl" \
-        --features="$FEATURES"
-
-# Now, delete the fake source and copy in the actual source. This allows us to
-# have a previous compilation step for compiling the dependencies, while being
-# able to only copy in and compile the binary itself when something in the
-# source changes.
-#
-# This is very important. If we just copy in the source after copying in the
-# Cargo.lock and Cargo.toml, then every time the source changes the dependencies
-# would have to be re-downloaded and re-compiled.
-#
-# Also, remove the artifacts of building the binaries.
-RUN rm -f target/$(uname -m)-unknown-linux-musl/release/deps/twilight_http_proxy*
-COPY ./src ./src
+COPY . .
 
 RUN source $HOME/.cargo/env && \
     cargo build \
